@@ -6,13 +6,12 @@ struct PencilKitView: UIViewRepresentable {
     let paperStyle: PaperStyle
     @Binding var selectedColor: Color
     @Binding var selectedThickness: CGFloat
+    @Binding var isEraserMode: Bool // 지우개 모드 추가
     
     func makeUIView(context: Context) -> PKCanvasView {
         canvasView.drawingPolicy = .anyInput
         canvasView.backgroundColor = .clear
         canvasView.isOpaque = false
-        
-        // 시스템 테마와 상관없이 캔버스는 라이트 모드로 고정 (색상 반전 방지)
         canvasView.overrideUserInterfaceStyle = .light
         
         updateTool()
@@ -24,8 +23,14 @@ struct PencilKitView: UIViewRepresentable {
     }
     
     private func updateTool() {
-        let tool = PKInkingTool(.pen, color: UIColor(selectedColor), width: selectedThickness)
-        canvasView.tool = tool
+        if isEraserMode {
+            // 지우개 도구 설정 (벡터 방식의 지우개)
+            canvasView.tool = PKEraserTool(.vector)
+        } else {
+            // 펜 도구 설정
+            let tool = PKInkingTool(.pen, color: UIColor(selectedColor), width: selectedThickness)
+            canvasView.tool = tool
+        }
     }
 }
 
