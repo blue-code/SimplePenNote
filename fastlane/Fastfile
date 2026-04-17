@@ -1,0 +1,76 @@
+default_platform(:ios)
+
+API_KEY_ID     = "33P5W93GJQ"
+API_ISSUER_ID  = "ed28e2d3-ce1d-4d24-8e58-373132e4b554"
+API_KEY_PATH   = "/Volumes/SSD/DEV_SSD/MY/SimplePenNote/fastlane/AuthKey_33P5W93GJQ.p8"
+
+platform :ios do
+
+  desc "XcodeGen으로 Xcode 프로젝트 생성"
+  lane :generate do
+    sh("cd .. && xcodegen generate")
+  end
+
+  desc "App Store Connect에 앱 등록"
+  lane :create_app do
+    produce(
+      username: "sukhaverse@gmail.com",
+      app_identifier: "com.blueCode.SimplePenNote",
+      app_name: "SimplePenNote",
+      language: "Korean",
+      app_version: "1.0.0",
+      sku: "com.blueCode.SimplePenNote",
+      platforms: ["ios"],
+      team_id: "KUDC7C6Z9H"
+    )
+  end
+
+  desc "TestFlight 배포 (iOS)"
+  lane :beta do
+    generate
+
+    api_key = app_store_connect_api_key(
+      key_id: API_KEY_ID,
+      issuer_id: API_ISSUER_ID,
+      key_filepath: API_KEY_PATH,
+      duration: 1200,
+      in_house: false
+    )
+
+    begin
+      build_num = latest_testflight_build_number(api_key: api_key) + 1
+    rescue
+      build_num = 1
+    end
+
+    increment_build_number(
+      build_number: build_num,
+      xcodeproj: "SimplePenNote.xcodeproj"
+    )
+
+    update_code_signing_settings(
+      use_automatic_signing: true,
+      path: "SimplePenNote.xcodeproj",
+      team_id: "KUDC7C6Z9H"
+    )
+
+    build_app(
+      project: "SimplePenNote.xcodeproj",
+      scheme: "SimplePenNote",
+      export_method: "app-store",
+      clean: true,
+      output_directory: "./build",
+      output_name: "SimplePenNote.ipa",
+      xcargs: "-allowProvisioningUpdates",
+      skip_package_ipa: true,
+    )
+
+    sh("cd .. && xcodebuild -exportArchive -archivePath '#{lane_context[SharedValues::XCODEBUILD_ARCHIVE]}' -exportPath ./build -exportOptionsPlist fastlane/ios_export.plist -allowProvisioningUpdates")
+
+    upload_to_testflight(
+      api_key: api_key,
+      ipa: "./build/SimplePenNote.ipa",
+      skip_waiting_for_build_processing: true
+    )
+  end
+end
