@@ -8,8 +8,11 @@ struct ContentView: View {
     @State private var selectedColor: Color = Color(red: 0.1, green: 0.1, blue: 0.1)
     @State private var selectedThickness: CGFloat = 4
     @State private var isEraserMode: Bool = false
-    @State private var eraserType: PKEraserTool.EraserType = .vector // 지우개 타입 상태
+    @State private var eraserType: PKEraserTool.EraserType = .vector
     @State private var showSidebar = false
+    
+    @State private var isExporting = false
+    @State private var exportItems: [Any] = []
     
     let penColors: [Color] = [
         Color(red: 0.1, green: 0.1, blue: 0.1),
@@ -19,10 +22,8 @@ struct ContentView: View {
     
     var body: some View {
         ZStack {
-            // 1. Paper Layer
             PaperBackgroundView(style: noteStore.currentPage.paperStyle)
             
-            // 2. Drawing Layer
             PencilKitView(
                 canvasView: $canvasView,
                 paperStyle: noteStore.currentPage.paperStyle,
@@ -32,11 +33,10 @@ struct ContentView: View {
                 eraserType: $eraserType
             )
             
-            // 3. Floating "Pill" Toolbar (최소 동선 툴바)
+            // Floating Toolbar
             VStack {
                 Spacer()
                 HStack(spacing: 20) {
-                    // Pen & Eraser Switchers
                     HStack(spacing: 12) {
                         ForEach(penColors, id: \.self) { color in
                             Circle()
@@ -52,7 +52,6 @@ struct ContentView: View {
                                 }
                         }
                         
-                        // Smart Eraser Button (Tap to Switch Type)
                         Button {
                             if isEraserMode {
                                 eraserType = (eraserType == .vector) ? .bitmap : .vector
@@ -78,16 +77,13 @@ struct ContentView: View {
                     
                     Divider().frame(height: 30)
                     
-                    // Thickness Picker
                     HStack(spacing: 15) {
                         ForEach([2, 4, 8], id: \.self) { size in
                             Circle()
                                 .fill(isEraserMode ? Color.pink.opacity(0.3) : selectedColor)
                                 .frame(width: CGFloat(size) + 8, height: CGFloat(size) + 8)
                                 .onTapGesture {
-                                    if !isEraserMode {
-                                        selectedThickness = CGFloat(size)
-                                    }
+                                    if !isEraserMode { selectedThickness = CGFloat(size) }
                                 }
                                 .overlay(
                                     Circle().stroke(!isEraserMode && selectedThickness == CGFloat(size) ? Color.primary : Color.clear, lineWidth: 2).padding(-4)
@@ -97,7 +93,6 @@ struct ContentView: View {
                     
                     Divider().frame(height: 30)
                     
-                    // Actions
                     HStack(spacing: 15) {
                         Button(action: { canvasView.undoManager?.undo() }) {
                             Image(systemName: "arrow.uturn.backward").foregroundColor(.primary)
@@ -116,7 +111,6 @@ struct ContentView: View {
                 .padding(.bottom, 30)
             }
             
-            // 4. Sidebar Overlay
             if showSidebar {
                 sidebarView
                     .transition(.move(edge: .trailing))
@@ -125,7 +119,12 @@ struct ContentView: View {
         }
         .animation(.spring(), value: showSidebar)
         .animation(.easeInOut, value: isEraserMode)
-        .animation(.easeInOut, value: eraserType)
+        .sheet(isPresented: $isExporting) {
+            ActivityViewController(activityItems: exportItems)
+        }
+        .onDisappear {
+            saveCurrentDrawing()
+        }
     }
     
     var sidebarView: some View {
@@ -140,7 +139,7 @@ struct ContentView: View {
                     canvasView.drawing = PKDrawing()
                     showSidebar = false
                 }) {
-                    Label("새 페이지", systemImage: "plus")
+                    Label("새 페이지 추가", systemImage: "plus")
                         .padding()
                         .frame(maxWidth: .infinity)
                         .background(Color.blue.opacity(0.1))
@@ -150,45 +149,105 @@ struct ContentView: View {
                 ScrollView {
                     VStack(spacing: 12) {
                         ForEach(noteStore.pages.indices, id: \.self) { index in
-                            HStack {
-                                Text(noteStore.pages[index].title)
-                                Spacer()
-                                Menu {
-                                    ForEach(PaperStyle.allCases) { style in
-                                        Button(style.rawValue.capitalized) {
-                                            noteStore.pages[index].paperStyle = style
-                                        }
+                            VStack(spacing: 0) {
+                                HStack {
+                                    TextField("제목", text: $noteStore.pages[index], onEditingChanged: { _ in
+                                        noteStore.savePages()
+                                    })
+                                    .font(.body)
+                                    .fontWeight(noteStore.currentPageIndex == index ? .bold : .regular)
+                                    
+                                    Spacer()
+                                    
+                                    Button {
+                                        exportNote(at: index)
+                                    } label: {
+                                        Image(systemName: "square.and.arrow.up")
+                                            .foregroundColor(.blue)
                                     }
-                                } label: {
-                                    Image(systemName: noteStore.pages[index].paperStyle.icon)
-                                        .foregroundColor(.secondary)
+                                    
+                                    Menu {
+                                        ForEach(PaperStyle.allCases) { style in
+                                            Button(style.displayName) {
+                                                noteStore.pages[index].paperStyle = style
+                                                noteStore.savePages()
+                                            }
+                                        }
+                                    } label: {
+                                        Image(systemName: noteStore.pages[index].paperStyle.icon)
+                                            .foregroundColor(.secondary)
+                                    }
                                 }
-                            }
-                            .padding()
-                            .background(noteStore.currentPageIndex == index ? Color.blue.opacity(0.1) : Color.gray.opacity(0.05))
-                            .cornerRadius(8)
-                            .onTapGesture {
-                                saveCurrentDrawing()
-                                noteStore.currentPageIndex = index
-                                canvasView.drawing = noteStore.pages[index].drawing
-                                showSidebar = false
+                                .padding()
+                                .background(noteStore.currentPageIndex == index ? Color.blue.opacity(0.1) : Color.gray.opacity(0.05))
+                                .cornerRadius(8)
+                                .onTapGesture {
+                                    saveCurrentDrawing()
+                                    noteStore.currentPageIndex = index
+                                    canvasView.drawing = noteStore.pages[index].drawing
+                                    showSidebar = false
+                                }
                             }
                         }
                     }
                 }
             }
             .padding()
-            .frame(width: 300)
+            .frame(width: 350)
             .background(.ultraThinMaterial)
-            .onTapGesture {}
         }
         .background(Color.black.opacity(0.1).onTapGesture { showSidebar = false })
         .ignoresSafeArea()
     }
     
     private func saveCurrentDrawing() {
-        noteStore.pages[noteStore.currentPageIndex].drawing = canvasView.drawing
+        if noteStore.currentPageIndex < noteStore.pages.count {
+            noteStore.pages[noteStore.currentPageIndex].drawing = canvasView.drawing
+            noteStore.savePages()
+        }
     }
+    
+    private func exportNote(at index: Int) {
+        let drawing = noteStore.pages[index].drawing
+        // 배경을 포함하여 이미지 생성
+        let rect = drawing.bounds.isEmpty ? CGRect(x: 0, y: 0, width: 500, height: 500) : drawing.bounds
+        if let image = drawing.image(from: rect, scale: 2.0).withBackground(color: .white) {
+            exportItems = [image]
+            isExporting = true
+        }
+    }
+}
+
+// TextField 바인딩 헬퍼
+extension TextField where Label == Text {
+    init(_ title: String, text: Binding<NotePage>, onEditingChanged: @escaping (Bool) -> Void) {
+        self.init(title, text: Binding(
+            get: { text.wrappedValue.title },
+            set: { text.wrappedValue.title = $0 }
+        ), onEditingChanged: onEditingChanged)
+    }
+}
+
+// UIImage 배경 추가 헬퍼 (생략)
+extension UIImage {
+    func withBackground(color: UIColor) -> UIImage? {
+        UIGraphicsBeginImageContextWithOptions(size, false, scale)
+        let rect = CGRect(origin: .zero, size: size)
+        color.setFill()
+        UIRectFill(rect)
+        draw(in: rect)
+        let res = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        return res
+    }
+}
+
+struct ActivityViewController: UIViewControllerRepresentable {
+    var activityItems: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 #Preview {
