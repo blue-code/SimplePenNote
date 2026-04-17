@@ -1,16 +1,33 @@
 import SwiftUI
 import PencilKit
-import Combine
+
+enum PaperStyle: String, CaseIterable, Identifiable {
+    case blank, grid, lines
+    var id: String { self.rawValue }
+    
+    var icon: String {
+        switch self {
+        case .blank: return "square"
+        case .grid: return "square.grid.3x3"
+        case .lines: return "line.horizontal.3"
+        }
+    }
+}
 
 class NotePage: Identifiable, ObservableObject {
     let id = UUID()
     @Published var title: String
     @Published var drawing: PKDrawing
+    @Published var paperStyle: PaperStyle
     @Published var date: Date
     
-    init(title: String = "Untitled", drawing: PKDrawing = PKDrawing(), date: Date = Date()) {
+    init(title: String = "새로운 노트", 
+         drawing: PKDrawing = PKDrawing(), 
+         paperStyle: PaperStyle = .grid, 
+         date: Date = Date()) {
         self.title = title
         self.drawing = drawing
+        self.paperStyle = paperStyle
         self.date = date
     }
 }
@@ -20,9 +37,7 @@ class NoteStore: ObservableObject {
     @Published var currentPageIndex: Int = 0
     
     init() {
-        // Initial page
-        let initialPage = NotePage(title: "첫 번째 노트")
-        pages.append(initialPage)
+        pages.append(NotePage(title: "첫 영감", paperStyle: .grid))
     }
     
     var currentPage: NotePage {
