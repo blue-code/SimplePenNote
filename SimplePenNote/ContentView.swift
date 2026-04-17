@@ -7,7 +7,8 @@ struct ContentView: View {
     
     @State private var selectedColor: Color = Color(red: 0.1, green: 0.1, blue: 0.1)
     @State private var selectedThickness: CGFloat = 4
-    @State private var isEraserMode: Bool = false // 지우개 모드 상태
+    @State private var isEraserMode: Bool = false
+    @State private var eraserType: PKEraserTool.EraserType = .vector // 지우개 타입 상태
     @State private var showSidebar = false
     
     let penColors: [Color] = [
@@ -27,16 +28,16 @@ struct ContentView: View {
                 paperStyle: noteStore.currentPage.paperStyle,
                 selectedColor: $selectedColor,
                 selectedThickness: $selectedThickness,
-                isEraserMode: $isEraserMode
+                isEraserMode: $isEraserMode,
+                eraserType: $eraserType
             )
             
             // 3. Floating "Pill" Toolbar (최소 동선 툴바)
             VStack {
                 Spacer()
                 HStack(spacing: 20) {
-                    // Pen & Eraser Mode Switchers
+                    // Pen & Eraser Switchers
                     HStack(spacing: 12) {
-                        // Color Pickers (펜 모드일 때만 활성화 효과)
                         ForEach(penColors, id: \.self) { color in
                             Circle()
                                 .fill(color)
@@ -51,25 +52,33 @@ struct ContentView: View {
                                 }
                         }
                         
-                        // Eraser Button (이쁜 아이콘)
+                        // Smart Eraser Button (Tap to Switch Type)
                         Button {
-                            isEraserMode.toggle()
+                            if isEraserMode {
+                                eraserType = (eraserType == .vector) ? .bitmap : .vector
+                            } else {
+                                isEraserMode = true
+                            }
                         } label: {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 6)
-                                    .fill(isEraserMode ? Color.pink.opacity(0.2) : Color.clear)
-                                    .frame(width: 32, height: 32)
+                                    .fill(isEraserMode ? Color.pink.opacity(0.15) : Color.clear)
+                                    .frame(width: 44, height: 36)
                                 
-                                Image(systemName: isEraserMode ? "eraser.fill" : "eraser")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(isEraserMode ? .pink : .secondary)
+                                VStack(spacing: 1) {
+                                    Image(systemName: eraserType == .vector ? "eraser.line.dashed" : "eraser.fill")
+                                        .font(.system(size: 16, weight: .bold))
+                                    Text(eraserType == .vector ? "OBJ" : "PIX")
+                                        .font(.system(size: 8, weight: .heavy))
+                                }
+                                .foregroundColor(isEraserMode ? .pink : .secondary)
                             }
                         }
                     }
                     
                     Divider().frame(height: 30)
                     
-                    // Thickness Picker (지우개일 때는 비활성화 느낌)
+                    // Thickness Picker
                     HStack(spacing: 15) {
                         ForEach([2, 4, 8], id: \.self) { size in
                             Circle()
@@ -116,6 +125,7 @@ struct ContentView: View {
         }
         .animation(.spring(), value: showSidebar)
         .animation(.easeInOut, value: isEraserMode)
+        .animation(.easeInOut, value: eraserType)
     }
     
     var sidebarView: some View {
