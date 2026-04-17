@@ -5,9 +5,16 @@ struct ContentView: View {
     @StateObject private var noteStore = NoteStore()
     @State private var canvasView = PKCanvasView()
     
-    @State private var selectedColor: Color = .black
+    // 명시적인 색상 사용 (시스템 색상 대신 RGB 값으로 고정)
+    @State private var selectedColor: Color = Color(red: 0.1, green: 0.1, blue: 0.1) // 짙은 차콜/블랙
     @State private var selectedThickness: CGFloat = 4
     @State private var showSidebar = false
+    
+    let penColors: [Color] = [
+        Color(red: 0.1, green: 0.1, blue: 0.1),  // 블랙
+        Color(red: 1, green: 0.2, blue: 0.2),    // 레드
+        Color(red: 0.2, green: 0.4, blue: 1)     // 블루
+    ]
     
     var body: some View {
         ZStack {
@@ -28,7 +35,7 @@ struct ContentView: View {
                 HStack(spacing: 20) {
                     // Color Picker
                     HStack(spacing: 12) {
-                        ForEach([Color.black, Color.red, Color.blue], id: \.self) { color in
+                        ForEach(penColors, id: \.self) { color in
                             Circle()
                                 .fill(color)
                                 .frame(width: 28, height: 28)

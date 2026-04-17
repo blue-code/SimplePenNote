@@ -11,6 +11,10 @@ struct PencilKitView: UIViewRepresentable {
         canvasView.drawingPolicy = .anyInput
         canvasView.backgroundColor = .clear
         canvasView.isOpaque = false
+        
+        // 시스템 테마와 상관없이 캔버스는 라이트 모드로 고정 (색상 반전 방지)
+        canvasView.overrideUserInterfaceStyle = .light
+        
         updateTool()
         return canvasView
     }
@@ -77,5 +81,11 @@ struct LinesView: View {
                 }, with: .color(Color.gray.opacity(0.2)), lineWidth: 0.8)
             }
         }
+    }
+}
+
+struct EmptyView: View {
+    var body: some View {
+        Color.clear
     }
 }
