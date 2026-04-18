@@ -17,11 +17,14 @@ platform :ios do
       username: "sukhaverse@gmail.com",
       app_identifier: "com.blueCode.SimplePenNote",
       app_name: "SimplePenNote",
-      language: "Korean",
+      language: "ko",
       app_version: "1.0.0",
       sku: "com.blueCode.SimplePenNote",
       platforms: ["ios"],
-      team_id: "KUDC7C6Z9H"
+      team_id: "KUDC7C6Z9H",
+      enable_services: {
+        icloud: "cloudkit"
+      }
     )
   end
 

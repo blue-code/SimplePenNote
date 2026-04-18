@@ -151,15 +151,17 @@ struct ContentView: View {
                         ForEach(noteStore.pages.indices, id: \.self) { index in
                             VStack(spacing: 0) {
                                 HStack {
-                                    TextField("제목", text: $noteStore.pages[index], onEditingChanged: { _ in
-                                        noteStore.savePages()
-                                    })
+                                    TextField("제목", text: Binding(
+                                        get: { noteStore.pages[index].title },
+                                        set: { noteStore.pages[index].title = $0; noteStore.savePages() }
+                                    ))
                                     .font(.body)
                                     .fontWeight(noteStore.currentPageIndex == index ? .bold : .regular)
                                     
                                     Spacer()
                                     
                                     Button {
+                                        saveCurrentDrawing()
                                         exportNote(at: index)
                                     } label: {
                                         Image(systemName: "square.and.arrow.up")
@@ -207,38 +209,58 @@ struct ContentView: View {
         }
     }
     
+    @MainActor
     private func exportNote(at index: Int) {
-        let drawing = noteStore.pages[index].drawing
-        // 배경을 포함하여 이미지 생성
-        let rect = drawing.bounds.isEmpty ? CGRect(x: 0, y: 0, width: 500, height: 500) : drawing.bounds
-        if let image = drawing.image(from: rect, scale: 2.0).withBackground(color: .white) {
-            exportItems = [image]
+        let page = noteStore.pages[index]
+        
+        // 현재 화면 크기 기준으로 렌더링 영역 설정
+        let exportView = ExportContainer(page: page)
+        let renderer = ImageRenderer(content: exportView)
+        renderer.scale = 3.0 // 고해상도
+        
+        var items: [Any] = []
+        
+        // 1. 이미지 생성
+        if let image = renderer.uiImage {
+            items.append(image)
+        }
+        
+        // 2. PDF 생성
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(page.title).pdf")
+        renderer.render { size, context in
+            var box = CGRect(origin: .zero, size: size)
+            guard let pdfContext = CGContext(tempURL as CFURL, mediaBox: &box, nil) else { return }
+            pdfContext.beginPDFPage(nil)
+            context(pdfContext)
+            pdfContext.endPDFPage()
+            pdfContext.closePDF()
+            items.append(tempURL)
+        }
+        
+        if !items.isEmpty {
+            exportItems = items
             isExporting = true
         }
     }
 }
 
-// TextField 바인딩 헬퍼
-extension TextField where Label == Text {
-    init(_ title: String, text: Binding<NotePage>, onEditingChanged: @escaping (Bool) -> Void) {
-        self.init(title, text: Binding(
-            get: { text.wrappedValue.title },
-            set: { text.wrappedValue.title = $0 }
-        ), onEditingChanged: onEditingChanged)
-    }
-}
-
-// UIImage 배경 추가 헬퍼 (생략)
-extension UIImage {
-    func withBackground(color: UIColor) -> UIImage? {
-        UIGraphicsBeginImageContextWithOptions(size, false, scale)
-        let rect = CGRect(origin: .zero, size: size)
-        color.setFill()
-        UIRectFill(rect)
-        draw(in: rect)
-        let res = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-        return res
+// 렌더링용 컨테이너: 배경 + 펜 선을 합쳐줌
+struct ExportContainer: View {
+    let page: NotePage
+    
+    var body: some View {
+        ZStack {
+            // 배경 템플릿 포함
+            PaperBackgroundView(style: page.paperStyle)
+            
+            // 펜 선 렌더링 (배경 투명하게 하여 위에 얹음)
+            let drawingImage = page.drawing.image(from: page.drawing.bounds, scale: 2.0)
+            Image(uiImage: drawingImage)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .padding(20) // 여백
+        }
+        .frame(width: 800, height: 1100) // 표준 출력 사이즈 고정
     }
 }
 

@@ -30,7 +30,6 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: KUDC7C6Z9H
-        CODE_SIGN_ENTITLEMENTS: SimplePenNote/SimplePenNote.entitlements
     info:
       path: SimplePenNote/Resources/Info.plist
       properties:
