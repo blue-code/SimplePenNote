@@ -22,8 +22,10 @@ struct ContentView: View {
     
     var body: some View {
         ZStack {
-            PaperBackgroundView(style: noteStore.currentPage.paperStyle)
+            // 1. Zoomable Background Layer
+            ZoomableCanvasContainer(canvasView: $canvasView, paperStyle: noteStore.currentPage.paperStyle)
             
+            // 2. Drawing Layer (PencilKit handles Zoom natively)
             PencilKitView(
                 canvasView: $canvasView,
                 paperStyle: noteStore.currentPage.paperStyle,
@@ -33,10 +35,11 @@ struct ContentView: View {
                 eraserType: $eraserType
             )
             
-            // Floating Toolbar
+            // 3. Floating Toolbar (UI)
             VStack {
                 Spacer()
                 HStack(spacing: 20) {
+                    // Pen & Eraser Switchers
                     HStack(spacing: 12) {
                         ForEach(penColors, id: \.self) { color in
                             Circle()
@@ -63,7 +66,6 @@ struct ContentView: View {
                                 RoundedRectangle(cornerRadius: 6)
                                     .fill(isEraserMode ? Color.pink.opacity(0.15) : Color.clear)
                                     .frame(width: 44, height: 36)
-                                
                                 VStack(spacing: 1) {
                                     Image(systemName: eraserType == .vector ? "eraser.line.dashed" : "eraser.fill")
                                         .font(.system(size: 16, weight: .bold))
@@ -77,18 +79,15 @@ struct ContentView: View {
                     
                     Divider().frame(height: 30)
                     
-                    HStack(spacing: 15) {
-                        ForEach([2, 4, 8], id: \.self) { size in
-                            Circle()
-                                .fill(isEraserMode ? Color.pink.opacity(0.3) : selectedColor)
-                                .frame(width: CGFloat(size) + 8, height: CGFloat(size) + 8)
-                                .onTapGesture {
-                                    if !isEraserMode { selectedThickness = CGFloat(size) }
-                                }
-                                .overlay(
-                                    Circle().stroke(!isEraserMode && selectedThickness == CGFloat(size) ? Color.primary : Color.clear, lineWidth: 2).padding(-4)
-                                )
+                    // Zoom Reset Button (편의성 추가)
+                    Button {
+                        withAnimation {
+                            canvasView.setZoomScale(1.0, animated: true)
                         }
+                    } label: {
+                        Image(systemName: "plus.magnifyingglass")
+                            .font(.system(size: 18))
+                            .foregroundColor(.primary)
                     }
                     
                     Divider().frame(height: 30)
@@ -137,6 +136,7 @@ struct ContentView: View {
                     saveCurrentDrawing()
                     noteStore.addNewPage()
                     canvasView.drawing = PKDrawing()
+                    canvasView.setZoomScale(1.0, animated: false) // 새 페이지는 줌 초기화
                     showSidebar = false
                 }) {
                     Label("새 페이지 추가", systemImage: "plus")
@@ -187,6 +187,7 @@ struct ContentView: View {
                                     saveCurrentDrawing()
                                     noteStore.currentPageIndex = index
                                     canvasView.drawing = noteStore.pages[index].drawing
+                                    canvasView.setZoomScale(1.0, animated: false)
                                     showSidebar = false
                                 }
                             }
@@ -213,19 +214,14 @@ struct ContentView: View {
     private func exportNote(at index: Int) {
         let page = noteStore.pages[index]
         
-        // 현재 화면 크기 기준으로 렌더링 영역 설정
+        // 내보내기 시에는 전체 영역을 렌더링하도록 컨테이너 사이즈 조정
         let exportView = ExportContainer(page: page)
         let renderer = ImageRenderer(content: exportView)
-        renderer.scale = 3.0 // 고해상도
+        renderer.scale = 2.0 
         
         var items: [Any] = []
+        if let image = renderer.uiImage { items.append(image) }
         
-        // 1. 이미지 생성
-        if let image = renderer.uiImage {
-            items.append(image)
-        }
-        
-        // 2. PDF 생성
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(page.title).pdf")
         renderer.render { size, context in
             var box = CGRect(origin: .zero, size: size)
@@ -244,26 +240,20 @@ struct ContentView: View {
     }
 }
 
-// 렌더링용 컨테이너: 배경 + 펜 선을 합쳐줌
 struct ExportContainer: View {
     let page: NotePage
-    
     var body: some View {
         ZStack {
-            // 배경 템플릿 포함
             PaperBackgroundView(style: page.paperStyle)
-            
-            // 펜 선 렌더링 (배경 투명하게 하여 위에 얹음)
-            let drawingImage = page.drawing.image(from: page.drawing.bounds, scale: 2.0)
-            Image(uiImage: drawingImage)
+            // 전체 캔버스 영역(3000x5000) 렌더링
+            Image(uiImage: page.drawing.image(from: CGRect(x: 0, y: 0, width: 3000, height: 5000), scale: 1.0))
                 .resizable()
-                .aspectRatio(contentMode: .fit)
-                .padding(20) // 여백
         }
-        .frame(width: 800, height: 1100) // 표준 출력 사이즈 고정
+        .frame(width: 1500, height: 2500) // 출력물은 절반 크기로 압축하여 선명도 유지
     }
 }
 
+// ActivityViewController 및 헬퍼 확장 코드는 이전과 동일...
 struct ActivityViewController: UIViewControllerRepresentable {
     var activityItems: [Any]
     func makeUIViewController(context: Context) -> UIActivityViewController {
