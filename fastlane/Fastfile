@@ -28,6 +28,75 @@ platform :ios do
     )
   end
 
+  desc "App Store 제출용 빌드 + 메타데이터 + 스크린샷 업로드"
+  lane :release do
+    generate
+
+    api_key = app_store_connect_api_key(
+      key_id: API_KEY_ID,
+      issuer_id: API_ISSUER_ID,
+      key_filepath: API_KEY_PATH,
+      duration: 1200,
+      in_house: false
+    )
+
+    begin
+      build_num = latest_testflight_build_number(api_key: api_key) + 1
+    rescue
+      build_num = 1
+    end
+
+    get_provisioning_profile(
+      api_key: api_key,
+      app_identifier: "com.blueCode.SimplePenNote",
+      team_id: "KUDC7C6Z9H",
+      adhoc: false,
+      force: true
+    )
+
+    increment_build_number(
+      build_number: build_num,
+      xcodeproj: "SimplePenNote.xcodeproj"
+    )
+
+    update_code_signing_settings(
+      use_automatic_signing: true,
+      path: "SimplePenNote.xcodeproj",
+      team_id: "KUDC7C6Z9H"
+    )
+
+    build_app(
+      project: "SimplePenNote.xcodeproj",
+      scheme: "SimplePenNote",
+      export_method: "app-store",
+      clean: true,
+      output_directory: "./build",
+      output_name: "SimplePenNote.ipa",
+      xcargs: "-allowProvisioningUpdates"
+    )
+
+    upload_to_app_store(
+      api_key: api_key,
+      app_identifier: "com.blueCode.SimplePenNote",
+      app_version: "1.0",
+      ipa: "./build/SimplePenNote.ipa",
+      metadata_path: "./fastlane/metadata",
+      screenshots_path: "./fastlane/screenshots",
+      overwrite_screenshots: true,
+      submit_for_review: false,
+      automatic_release: false,
+      skip_metadata: false,
+      skip_screenshots: false,
+      force: true,
+      precheck_include_in_app_purchases: false,
+      submission_information: {
+        add_id_info_uses_idfa: false,
+        export_compliance_uses_encryption: false,
+        export_compliance_is_exempt: true
+      }
+    )
+  end
+
   desc "TestFlight 배포 (iOS)"
   lane :beta do
     generate

@@ -30,6 +30,8 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: KUDC7C6Z9H
+    scheme:
+      storeKitConfiguration: SimplePenNote/Resources/SimplePenNote.storekit
     info:
       path: SimplePenNote/Resources/Info.plist
       properties:
@@ -47,3 +49,4 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         ITSAppUsesNonExemptEncryption: false
+        NSFaceIDUsageDescription: "앱 잠금을 활성화하면 Face ID로 잠금을 해제합니다. SimplePenNote는 인증 결과만 사용하며, 생체 정보 자체에 접근하지 않습니다."

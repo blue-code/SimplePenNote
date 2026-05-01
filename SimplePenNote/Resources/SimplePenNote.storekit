@@ -1,0 +1,40 @@
+{
+  "identifier" : "F5A0B1C0-1234-5678-90AB-CDEF12345678",
+  "nonRenewingSubscriptions" : [],
+  "products" : [
+    {
+      "displayPrice" : "4400",
+      "familyShareable" : false,
+      "internalID" : "spnpro001",
+      "localizations" : [
+        {
+          "description" : "무제한 페이지, 워터마크 없는 PNG·PDF 내보내기. 일회 결제로 모든 기능 영구 사용.",
+          "displayName" : "Pro",
+          "locale" : "ko_KR"
+        },
+        {
+          "description" : "Unlimited pages. Watermark-free PNG/PDF export.",
+          "displayName" : "Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.blueCode.SimplePenNote.pro",
+      "referenceName" : "SimplePenNote Pro",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_compatibilityTimeRate" : 1,
+    "_developerTeamID" : "KUDC7C6Z9H",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 776246410.32,
+    "_locale" : "ko_KR",
+    "_storefront" : "KOR",
+    "_storeKitErrors" : []
+  },
+  "subscriptionGroups" : [],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

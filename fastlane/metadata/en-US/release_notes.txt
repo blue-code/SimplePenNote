@@ -1,0 +1,9 @@
+First release — SimplePenNote v1.0.0
+
+· Six paper templates (blank, grid, lined, Cornell, weekly, study)
+· Apple Pencil & finger handwriting
+· iCloud sync
+· Face ID / Touch ID app lock
+· 30-day trash
+· PNG / PDF export
+· One-time SimplePenNote Pro purchase available

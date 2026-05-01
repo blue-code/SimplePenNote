@@ -1,0 +1,9 @@
+첫 출시 — SimplePenNote v1.0.0
+
+· 6가지 종이 템플릿 (무지·모눈·줄글·코넬·위클리·오답노트)
+· Apple Pencil & 손가락 필기 지원
+· iCloud 자동 동기화
+· Face ID/Touch ID 앱 잠금
+· 30일 휴지통
+· PNG·PDF 내보내기
+· SimplePenNote Pro 일회 결제 옵션
