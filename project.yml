@@ -31,7 +31,7 @@ targets:
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: Apple Distribution
         CODE_SIGN_ENTITLEMENTS: SimplePenNote/SimplePenNote.entitlements
-        PROVISIONING_PROFILE_SPECIFIER: com.blueCode.SimplePenNote AppStore
+        PROVISIONING_PROFILE_SPECIFIER: com.blueCode.SimplePenNote AppStore C599C444
         DEVELOPMENT_TEAM: KUDC7C6Z9H
     scheme:
       storeKitConfiguration: SimplePenNote/Resources/SimplePenNote.storekit

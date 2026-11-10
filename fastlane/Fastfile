@@ -227,7 +227,7 @@ platform :ios do
       app_identifier: "com.blueCode.SimplePenNote",
       team_id: "KUDC7C6Z9H",
       adhoc: false,
-      provisioning_name: "com.blueCode.SimplePenNote AppStore",
+      provisioning_name: "com.blueCode.SimplePenNote AppStore C599C444",
       output_path: "./build/signing",
       readonly: true
     )
@@ -238,7 +238,7 @@ platform :ios do
       targets: ["SimplePenNote"],
       team_id: "KUDC7C6Z9H",
       code_sign_identity: "Apple Distribution",
-      profile_name: ENV["SIGH_NAME"] || "com.blueCode.SimplePenNote AppStore"
+      profile_name: ENV["SIGH_NAME"] || "com.blueCode.SimplePenNote AppStore C599C444"
     )
 
     build_app(
@@ -251,7 +251,7 @@ platform :ios do
       export_options: {
         signingStyle: "manual",
         provisioningProfiles: {
-          "com.blueCode.SimplePenNote" => ENV["SIGH_NAME"] || "com.blueCode.SimplePenNote AppStore"
+          "com.blueCode.SimplePenNote" => ENV["SIGH_NAME"] || "com.blueCode.SimplePenNote AppStore C599C444"
         }
       }
     )

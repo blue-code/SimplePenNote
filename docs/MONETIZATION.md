@@ -69,3 +69,5 @@ scripts/validate-note-model.sh
 - API 키는 기본적으로 `fastlane/AuthKey_33P5W93GJQ.p8`에서 읽고 `ASC_KEY_PATH`로 재정의할 수 있습니다. 키 파일은 Git에서 제외됩니다.
 - 이 환경에서는 설치된 Homebrew Fastlane 2.240.1을 사용합니다. 기존 `vendor/bundle`은 Ruby 2.6용이므로 현재 Ruby 4 환경에서는 `bundle exec`로 사용할 수 없습니다.
 - iOS 실행 테스트는 TestFlight 설치 후에도 확인해야 합니다. 업로드 성공만으로 결제·필기·공유 동작을 검증한 것으로 간주하지 않습니다.
+
+서명 프로파일은 로컬 배포 인증서 `C599C444…`에 연결된 `com.blueCode.SimplePenNote AppStore C599C444`를 사용합니다. 기존 프로파일의 인증서는 로컬에 없으므로 대체 프로파일을 추가했으며 다른 인증서나 프로파일은 폐기하지 않았습니다.
