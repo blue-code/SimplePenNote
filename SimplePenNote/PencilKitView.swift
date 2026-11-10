@@ -1,6 +1,10 @@
 import SwiftUI
 import PencilKit
 
+enum NoteCanvas {
+    static let size = CGSize(width: 3000, height: 5000)
+}
+
 struct PencilKitView: UIViewRepresentable {
     @Binding var canvasView: PKCanvasView
     let paperStyle: PaperStyle
@@ -8,34 +12,72 @@ struct PencilKitView: UIViewRepresentable {
     @Binding var selectedThickness: CGFloat
     @Binding var isEraserMode: Bool
     @Binding var eraserType: PKEraserTool.EraserType
+    var onDrawingChange: (PKDrawing) -> Void = { _ in }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onDrawingChange: onDrawingChange)
+    }
+
+    final class Coordinator: NSObject, PKCanvasViewDelegate {
+        var onDrawingChange: (PKDrawing) -> Void
+        private var pendingSave: DispatchWorkItem?
+
+        init(onDrawingChange: @escaping (PKDrawing) -> Void) {
+            self.onDrawingChange = onDrawingChange
+        }
+
+        func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+            // PencilKit emits changes while a stroke is still being drawn. Avoid
+            // serializing the entire notebook at the display refresh rate.
+            pendingSave?.cancel()
+            let work = DispatchWorkItem { [weak self, weak canvasView] in
+                guard let canvasView else { return }
+                self?.onDrawingChange(canvasView.drawing)
+            }
+            pendingSave = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+        }
+
+        func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) {
+            pendingSave?.cancel()
+            pendingSave = nil
+            onDrawingChange(canvasView.drawing)
+        }
+
+        func cancelPendingSave() {
+            pendingSave?.cancel()
+            pendingSave = nil
+        }
+    }
     
     func makeUIView(context: Context) -> PKCanvasView {
+        canvasView.delegate = context.coordinator
         // 기본 설정
         canvasView.drawingPolicy = .anyInput
         canvasView.backgroundColor = .clear
         canvasView.isOpaque = false
         canvasView.overrideUserInterfaceStyle = .light
         
-        // 줌 설정: 0.2배(축소) ~ 5.0배(확대)
-        canvasView.minimumZoomScale = 0.2
+        // 줌 설정: 작은 iPhone에서도 전체 종이를 볼 수 있도록 축소 허용
+        canvasView.minimumZoomScale = 0.05
         canvasView.maximumZoomScale = 5.0
         canvasView.bouncesZoom = true
         
         // 넉넉한 작업 공간 (A4 대비 약 10배 넓은 공간)
-        canvasView.contentSize = CGSize(width: 3000, height: 5000)
-        
-        // 초기 위치를 중앙 부근으로 설정
-        DispatchQueue.main.async {
-            let centerX = (canvasView.contentSize.width - canvasView.bounds.width) / 2
-            canvasView.setContentOffset(CGPoint(x: centerX, y: 100), animated: false)
-        }
+        canvasView.contentSize = NoteCanvas.size
         
         updateTool()
         return canvasView
     }
     
     func updateUIView(_ uiView: PKCanvasView, context: Context) {
+        context.coordinator.onDrawingChange = onDrawingChange
         updateTool()
+    }
+
+    static func dismantleUIView(_ uiView: PKCanvasView, coordinator: Coordinator) {
+        coordinator.cancelPendingSave()
+        uiView.delegate = nil
     }
     
     private func updateTool() {
@@ -54,11 +96,11 @@ struct ZoomableCanvasContainer: View {
     let paperStyle: PaperStyle
     
     var body: some View {
-        GeometryReader { proxy in
+        GeometryReader { _ in
             ZStack(alignment: .topLeading) {
                 // 1. 배경 레이어 (캔버스 크기와 동일하게 설정)
                 PaperBackgroundView(style: paperStyle)
-                    .frame(width: canvasView.contentSize.width, height: canvasView.contentSize.height)
+                    .frame(width: NoteCanvas.size.width, height: NoteCanvas.size.height)
                     // 캔버스의 스크롤/줌 변환을 배경에도 적용
                     .modifier(CanvasSyncModifier(canvasView: canvasView))
             }

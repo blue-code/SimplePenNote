@@ -7,343 +7,420 @@ struct ContentView: View {
     @StateObject private var lockManager = LockManager()
     @StateObject private var proStore = ProStore()
     @State private var canvasView = PKCanvasView()
-
-    @State private var selectedColor: Color = Color(red: 0.1, green: 0.1, blue: 0.1)
+    @State private var selectedColor: Color = Color(white: 0.1)
     @State private var selectedThickness: CGFloat = 4
-    @State private var isEraserMode: Bool = false
+    @State private var isEraserMode = false
     @State private var eraserType: PKEraserTool.EraserType = .vector
     @State private var showSidebar = false
     @State private var showTrash = false
     @State private var showSettings = false
-    @State private var showPaywall = false
+    @State private var paywallContext: PaywallContext?
+    @State private var showTemplates = false
+    @State private var showBatchExport = false
+    @State private var exportPage: NotePage?
+    @State private var sharePayload: SharePayload?
+    @State private var pendingExport: ExportRequest?
+    @State private var exportTask: Task<Void, Never>?
+    @State private var isPreparingExport = false
+    @State private var exportProgress = 0
+    @State private var exportTotal = 0
+    @State private var pendingPaywall: PaywallContext?
+    @State private var exportError: String?
+    @State private var hasLoadedCanvas = false
+    @State private var loadedPageID: UUID?
+    @State private var searchText = ""
 
-    @State private var isExporting = false
-    @State private var exportItems: [Any] = []
-    @State private var didApplyLaunchOptions = false
+    private struct SharePayload: Identifiable {
+        let id = UUID()
+        let items: [Any]
+    }
 
-    let penColors: [Color] = [
-        Color(red: 0.1, green: 0.1, blue: 0.1),
-        Color(red: 1, green: 0.2, blue: 0.2),
-        Color(red: 0.2, green: 0.4, blue: 1)
-    ]
+    private struct ExportRequest {
+        let pages: [NotePage]
+        let format: NoteExportFormat
+    }
+
+    private let penColors: [Color] = [Color(white: 0.1), .red, .blue, .green, .purple]
 
     var body: some View {
         ZStack {
             mainContent
+                .allowsHitTesting(!isPreparingExport)
+                .disabled(isPreparingExport)
+            if isPreparingExport {
+                Color.black.opacity(0.15).ignoresSafeArea()
+                VStack(spacing: 16) {
+                    ProgressView(value: Double(exportProgress), total: Double(max(1, exportTotal)))
+                    Text("노트 내보내는 중").font(.headline)
+                    Text("\(exportProgress) / \(exportTotal)페이지").font(.subheadline).foregroundStyle(.secondary)
+                    Button("취소") { exportTask?.cancel() }
+                }
+                .padding(28)
+                .frame(maxWidth: 300)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+                .shadow(radius: 20)
+            }
             if lockManager.isLocked {
-                LockScreenView(lockManager: lockManager)
-                    .transition(.opacity)
-                    .zIndex(99)
+                LockScreenView(lockManager: lockManager).zIndex(99)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: lockManager.isLocked)
     }
 
     private var mainContent: some View {
+        GeometryReader { proxy in
+            canvasContent
+                .onChange(of: proxy.size, initial: true) { _, size in
+                    fitPage(size: size)
+                }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) { canvasHeader }
+        .safeAreaInset(edge: .bottom, spacing: 0) { drawingToolbar }
+        .overlay(alignment: .trailing) {
+            if showSidebar { sidebarView.transition(.move(edge: .trailing)) }
+        }
+        .animation(.easeInOut(duration: 0.2), value: showSidebar)
+        .sheet(item: $sharePayload) { ActivityViewController(activityItems: $0.items) }
+        .sheet(isPresented: $showTrash) { TrashView(noteStore: noteStore) }
+        .sheet(isPresented: $showSettings, onDismiss: finishSheet) {
+            SettingsView(lockManager: lockManager, proStore: proStore) {
+                pendingPaywall = .general
+            }
+        }
+        .sheet(item: $paywallContext) { PaywallView(proStore: proStore, context: $0) }
+        .sheet(isPresented: $showTemplates, onDismiss: finishSheet) {
+            TemplatePickerView { style in
+                guard proStore.isPro || noteStore.activePages.count < ProStore.freePageLimit else {
+                    pendingPaywall = .pageLimit
+                    return
+                }
+                saveCurrentDrawing()
+                noteStore.addNewPage(paperStyle: style)
+                loadCurrentDrawing()
+                showSidebar = false
+            }
+        }
+        .sheet(item: $exportPage, onDismiss: finishSheet) { page in
+            ExportOptionsView(page: page, isPro: proStore.isPro) { format in
+                pendingExport = ExportRequest(pages: [page], format: format)
+                exportPage = nil
+            } onUpgrade: {
+                exportPage = nil
+                pendingPaywall = .cleanExport
+            }
+        }
+        .sheet(isPresented: $showBatchExport, onDismiss: finishSheet) {
+            BatchExportView(pages: noteStore.activePages) { pages in
+                showBatchExport = false
+                guard proStore.isPro else { pendingPaywall = .batchExport; return }
+                pendingExport = ExportRequest(pages: pages, format: .pdf)
+            }
+        }
+        .alert("내보내기 실패", isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })) {
+            Button("확인", role: .cancel) {}
+        } message: { Text(exportError ?? "") }
+        .onAppear {
+            guard !hasLoadedCanvas else { return }
+            loadCurrentDrawing()
+            hasLoadedCanvas = true
+            applyLaunchOptions()
+        }
+        .onChange(of: noteStore.cloudMergeRevision) { _, _ in loadCurrentDrawing() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background || phase == .inactive {
+                saveCurrentDrawing()
+                noteStore.flushNow()
+                lockManager.lockIfEnabled()
+            } else if phase == .active {
+                Task { await proStore.refresh() }
+            }
+        }
+    }
+
+    private var canvasContent: some View {
         ZStack {
             ZoomableCanvasContainer(canvasView: $canvasView, paperStyle: noteStore.currentPage.paperStyle)
-
+                .clipped()
             PencilKitView(
                 canvasView: $canvasView,
                 paperStyle: noteStore.currentPage.paperStyle,
                 selectedColor: $selectedColor,
                 selectedThickness: $selectedThickness,
                 isEraserMode: $isEraserMode,
-                eraserType: $eraserType
+                eraserType: $eraserType,
+                onDrawingChange: { drawing in
+                    guard hasLoadedCanvas, drawing.dataRepresentation() != noteStore.currentPage.drawing.dataRepresentation() else { return }
+                    noteStore.currentPage.drawing = drawing
+                    noteStore.savePages()
+                }
             )
-
-            VStack {
-                Spacer()
-                HStack(spacing: 20) {
-                    HStack(spacing: 12) {
-                        ForEach(penColors, id: \.self) { color in
-                            Circle()
-                                .fill(color)
-                                .frame(width: 28, height: 28)
-                                .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                                .shadow(radius: 2)
-                                .scaleEffect(!isEraserMode && selectedColor == color ? 1.2 : 1.0)
-                                .opacity(isEraserMode ? 0.4 : 1.0)
-                                .onTapGesture {
-                                    isEraserMode = false
-                                    selectedColor = color
-                                }
-                        }
-
-                        Button {
-                            if isEraserMode {
-                                eraserType = (eraserType == .vector) ? .bitmap : .vector
-                            } else {
-                                isEraserMode = true
-                            }
-                        } label: {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(isEraserMode ? Color.pink.opacity(0.15) : Color.clear)
-                                    .frame(width: 44, height: 36)
-                                VStack(spacing: 1) {
-                                    Image(systemName: eraserType == .vector ? "eraser.line.dashed" : "eraser.fill")
-                                        .font(.system(size: 16, weight: .bold))
-                                    Text(eraserType == .vector ? "OBJ" : "PIX")
-                                        .font(.system(size: 8, weight: .heavy))
-                                }
-                                .foregroundColor(isEraserMode ? .pink : .secondary)
-                            }
-                        }
-                    }
-
-                    Divider().frame(height: 30)
-
-                    Button {
-                        withAnimation {
-                            canvasView.setZoomScale(1.0, animated: true)
-                        }
-                    } label: {
-                        Image(systemName: "plus.magnifyingglass")
-                            .font(.system(size: 18))
-                            .foregroundColor(.primary)
-                    }
-
-                    Divider().frame(height: 30)
-
-                    HStack(spacing: 15) {
-                        Button(action: { canvasView.undoManager?.undo() }) {
-                            Image(systemName: "arrow.uturn.backward").foregroundColor(.primary)
-                        }
-
-                        Button(action: { showSidebar.toggle() }) {
-                            Image(systemName: "list.bullet").foregroundColor(.primary)
-                        }
-                    }
-                }
-                .padding(.horizontal, 25)
-                .padding(.vertical, 12)
-                .background(.ultraThinMaterial)
-                .clipShape(Capsule())
-                .shadow(color: .black.opacity(0.15), radius: 10, y: 5)
-                .padding(.bottom, 30)
-            }
-
-            if showSidebar {
-                sidebarView
-                    .transition(.move(edge: .trailing))
-                    .zIndex(1)
-            }
-        }
-        .animation(.spring(), value: showSidebar)
-        .animation(.easeInOut, value: isEraserMode)
-        .sheet(isPresented: $isExporting) {
-            ActivityViewController(activityItems: exportItems)
-        }
-        .sheet(isPresented: $showTrash) {
-            TrashView(noteStore: noteStore)
-        }
-        .sheet(isPresented: $showSettings) {
-            SettingsView(lockManager: lockManager, proStore: proStore, showPaywall: $showPaywall)
-        }
-        .sheet(isPresented: $showPaywall) {
-            PaywallView(proStore: proStore)
-        }
-        .onChange(of: scenePhase) { phase in
-            if phase == .background || phase == .inactive {
-                saveCurrentDrawing()
-                noteStore.flushNow()
-                lockManager.lockIfEnabled()
-            } else if phase == .active && !didApplyLaunchOptions {
-                didApplyLaunchOptions = true
-                applyLaunchOptions()
-            }
-        }
-        .onDisappear {
-            saveCurrentDrawing()
-            noteStore.flushNow()
         }
     }
 
-    var sidebarView: some View {
-        HStack {
-            Spacer()
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(spacing: 16) {
-                    Text("나의 노트").font(.title2).bold()
-                    Spacer()
-                    Button {
-                        showTrash = true
-                    } label: {
-                        Image(systemName: "trash")
-                            .foregroundColor(.secondary)
-                    }
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding(.top, 60)
-
-                Button(action: {
-                    if !proStore.isPro && noteStore.activePages.count >= ProStore.freePageLimit {
-                        showPaywall = true
-                        return
-                    }
-                    saveCurrentDrawing()
-                    noteStore.addNewPage()
-                    canvasView.drawing = PKDrawing()
-                    canvasView.setZoomScale(1.0, animated: false)
-                    showSidebar = false
-                }) {
-                    HStack {
-                        Image(systemName: "plus")
-                        Text("새 페이지 추가")
-                        if !proStore.isPro {
-                            Spacer()
-                            Text("\(noteStore.activePages.count) / \(ProStore.freePageLimit)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(Color.blue.opacity(0.1))
-                    .cornerRadius(10)
-                }
-
-                ScrollView {
-                    VStack(spacing: 12) {
-                        ForEach(noteStore.activePages) { page in
-                            sidebarRow(for: page)
-                        }
-                    }
-                }
+    private var canvasHeader: some View {
+        HStack(spacing: 14) {
+            Button { saveCurrentDrawing(); showSidebar.toggle() } label: {
+                Image(systemName: "sidebar.right")
+            }.accessibilityLabel("나의 노트 열기")
+            VStack(alignment: .leading, spacing: 2) {
+                Text(noteStore.currentPage.title.isEmpty ? "제목 없는 노트" : noteStore.currentPage.title)
+                    .font(.headline).lineLimit(1)
+                Text(noteStore.currentPage.paperStyle.displayName)
+                    .font(.caption).foregroundStyle(.secondary)
             }
-            .padding()
-            .frame(width: 350)
-            .background(.ultraThinMaterial)
-        }
-        .background(Color.black.opacity(0.1).onTapGesture { showSidebar = false })
-        .ignoresSafeArea()
-    }
-
-    @ViewBuilder
-    private func sidebarRow(for page: NotePage) -> some View {
-        let isCurrent = (currentIndex(of: page) == noteStore.currentPageIndex)
-        HStack {
-            TextField("제목", text: Binding(
-                get: { page.title },
-                set: { page.title = $0; noteStore.markDirty(page) }
-            ))
-            .font(.body)
-            .fontWeight(isCurrent ? .bold : .regular)
-
-            Spacer()
-
-            Button {
-                saveCurrentDrawing()
-                exportNote(page: page)
-            } label: {
+            Spacer(minLength: 0)
+            Button { requestNewPage() } label: { Image(systemName: "plus.square") }
+                .accessibilityLabel("템플릿으로 새 노트 만들기")
+            Button { saveCurrentDrawing(); exportPage = noteStore.currentPage } label: {
                 Image(systemName: "square.and.arrow.up")
-                    .foregroundColor(.blue)
-            }
+            }.accessibilityLabel("현재 노트 내보내기")
+        }
+        .font(.title3)
+        .padding(.horizontal, 18).padding(.vertical, 12)
+        .background(.regularMaterial)
+    }
 
-            Menu {
-                ForEach(PaperStyle.allCases) { style in
-                    Button(style.displayName) {
-                        page.paperStyle = style
-                        noteStore.markDirty(page)
+    private var drawingToolbar: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 14) {
+                ForEach(penColors, id: \.self) { color in
+                    Button { selectedColor = color; isEraserMode = false } label: {
+                        Circle().fill(color).frame(width: 26, height: 26)
+                            .padding(3)
+                            .overlay(Circle().stroke(!isEraserMode && selectedColor == color ? Color.primary : .clear, lineWidth: 2))
+                    }.accessibilityLabel(color == .red ? "빨간 펜" : color == .blue ? "파란 펜" : color == .green ? "초록 펜" : color == .purple ? "보라 펜" : "검정 펜")
+                }
+                Menu {
+                    ForEach([CGFloat(2), 4, 8, 14], id: \.self) { width in
+                        Button { selectedThickness = width; isEraserMode = false } label: {
+                            Label("펜 굵기 \(Int(width))", systemImage: selectedThickness == width ? "checkmark" : "pencil.tip")
+                        }
                     }
-                }
-            } label: {
-                Image(systemName: page.paperStyle.icon)
-                    .foregroundColor(.secondary)
+                } label: { Image(systemName: "lineweight") }
+                .accessibilityLabel("펜 굵기 선택")
+                Button {
+                    if isEraserMode { eraserType = eraserType == .vector ? .bitmap : .vector }
+                    isEraserMode = true
+                } label: {
+                    Image(systemName: eraserType == .vector ? "eraser.line.dashed" : "eraser.fill")
+                        .foregroundStyle(isEraserMode ? Color.pink : .primary)
+                }.accessibilityLabel("지우개, 다시 누르면 방식 전환")
             }
-
-            Button(role: .destructive) {
-                if isCurrent { saveCurrentDrawing() }
-                noteStore.softDelete(page)
-                if let newIdx = noteStore.pages.firstIndex(where: { $0.id == noteStore.currentPage.id }) {
-                    noteStore.currentPageIndex = newIdx
-                    canvasView.drawing = noteStore.currentPage.drawing
-                    canvasView.setZoomScale(1.0, animated: false)
-                }
-            } label: {
-                Image(systemName: "trash")
-                    .foregroundColor(.secondary)
+            HStack(spacing: 30) {
+                Button { canvasView.undoManager?.undo() } label: { Image(systemName: "arrow.uturn.backward") }
+                    .accessibilityLabel("실행 취소")
+                Button { canvasView.undoManager?.redo() } label: { Image(systemName: "arrow.uturn.forward") }
+                    .accessibilityLabel("다시 실행")
+                Button { fitPage() } label: { Label("한눈에 보기", systemImage: "arrow.down.right.and.arrow.up.left") }
+                    .font(.caption)
             }
         }
-        .padding()
-        .background(isCurrent ? Color.blue.opacity(0.1) : Color.gray.opacity(0.05))
-        .cornerRadius(8)
-        .onTapGesture {
-            saveCurrentDrawing()
-            if let idx = currentIndex(of: page) {
-                noteStore.currentPageIndex = idx
-                canvasView.drawing = page.drawing
-                canvasView.setZoomScale(1.0, animated: false)
-                showSidebar = false
+        .font(.title3)
+        .buttonStyle(.plain)
+        .padding(.horizontal, 12).padding(.vertical, 14)
+        .frame(maxWidth: .infinity)
+        .background(.regularMaterial)
+    }
+
+    private var sidebarView: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .trailing) {
+                Color.black.opacity(0.2).onTapGesture { showSidebar = false }
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Text("나의 노트").font(.title2.bold())
+                        Spacer()
+                        Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                            .accessibilityLabel("설정")
+                        Button { showSidebar = false } label: { Image(systemName: "xmark") }
+                            .accessibilityLabel("노트 목록 닫기")
+                    }
+                    HStack {
+                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                        TextField("노트 제목 검색", text: $searchText)
+                    }.padding(10).background(Color.gray.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+                    Button { requestNewPage() } label: {
+                        HStack {
+                            Label("새 노트 만들기", systemImage: "plus")
+                            Spacer()
+                            Text(proStore.isPro ? "Pro" : "\(noteStore.activePages.count) / \(ProStore.freePageLimit)")
+                                .font(.caption.bold())
+                        }.padding(14).background(Color.indigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    ScrollView {
+                        LazyVStack(spacing: 10) {
+                            if filteredPages.isEmpty {
+                                Text("검색 결과가 없습니다").foregroundStyle(.secondary).padding(.vertical, 24)
+                            }
+                            ForEach(filteredPages) { page in
+                                NoteLibraryRow(page: page, isCurrent: page.id == noteStore.currentPage.id,
+                                    onSelect: { selectPage(page) },
+                                    onRename: { noteStore.markDirty(page) },
+                                    onStyle: { style in page.paperStyle = style; noteStore.markDirty(page) },
+                                    onExport: { saveCurrentDrawing(); exportPage = page },
+                                    onDuplicate: { duplicatePage(page) },
+                                    onDelete: {
+                                        saveCurrentDrawing()
+                                        noteStore.softDelete(page)
+                                        loadCurrentDrawing()
+                                    })
+                            }
+                        }
+                    }
+                    if !proStore.isPro {
+                        Button { presentPaywall(.general) } label: {
+                            HStack(alignment: .top) {
+                                Image(systemName: "sparkles")
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("노트에 한계를 두지 마세요").font(.subheadline.bold())
+                                    Text("무제한 노트 · 깔끔한 출력 · PDF로 묶기")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right").font(.caption)
+                            }.padding(14).background(Color.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                        }.buttonStyle(.plain)
+                    }
+                    HStack {
+                        Button { saveCurrentDrawing(); requestBatchExport() } label: {
+                            Label("PDF로 묶기", systemImage: "doc.on.doc")
+                        }
+                        Spacer()
+                        Button { showTrash = true } label: { Image(systemName: "trash") }
+                            .accessibilityLabel("휴지통")
+                    }.font(.subheadline).padding(.vertical, 4)
+                }
+                .padding(20)
+                .frame(width: min(380, proxy.size.width), height: proxy.size.height)
+                .background(.regularMaterial)
             }
         }
     }
 
-    private func currentIndex(of page: NotePage) -> Int? {
-        noteStore.pages.firstIndex { $0.id == page.id }
+    private var filteredPages: [NotePage] {
+        noteStore.activePages.filter { searchText.isEmpty || $0.title.localizedCaseInsensitiveContains(searchText) }
+    }
+
+    private func presentPaywall(_ context: PaywallContext) {
+        paywallContext = context
+    }
+
+    private func requestNewPage() {
+        guard proStore.isPro || noteStore.activePages.count < ProStore.freePageLimit else {
+            presentPaywall(.pageLimit); return
+        }
+        showTemplates = true
+    }
+
+    private func requestBatchExport() {
+        guard proStore.isPro else { presentPaywall(.batchExport); return }
+        showBatchExport = true
+    }
+
+    private func duplicatePage(_ page: NotePage) {
+        guard proStore.isPro || noteStore.activePages.count < ProStore.freePageLimit else {
+            presentPaywall(.pageLimit); return
+        }
+        saveCurrentDrawing()
+        noteStore.duplicatePage(page)
+        loadCurrentDrawing()
+        showSidebar = false
+    }
+
+    private func selectPage(_ page: NotePage) {
+        saveCurrentDrawing()
+        noteStore.flushNow()
+        if let index = noteStore.pages.firstIndex(where: { $0.id == page.id }) {
+            noteStore.currentPageIndex = index
+            loadCurrentDrawing()
+            showSidebar = false
+        }
+    }
+
+    private func loadCurrentDrawing() {
+        let page = noteStore.currentPage
+        let switchedPage = loadedPageID != page.id
+        if canvasView.drawing.dataRepresentation() != page.drawing.dataRepresentation() {
+            canvasView.drawing = page.drawing
+            canvasView.undoManager?.removeAllActions()
+        } else if switchedPage {
+            canvasView.undoManager?.removeAllActions()
+        }
+        loadedPageID = page.id
+        if switchedPage { fitPage() }
+    }
+
+    private func fitPage(size: CGSize? = nil) {
+        let viewport = size ?? canvasView.bounds.size
+        guard viewport.width > 0, viewport.height > 0 else { return }
+        let scale = min(viewport.width / NoteCanvas.size.width, viewport.height / NoteCanvas.size.height)
+        canvasView.setZoomScale(max(0.05, min(1, scale)), animated: false)
+        canvasView.setContentOffset(.zero, animated: false)
+    }
+
+    private func saveCurrentDrawing() {
+        guard hasLoadedCanvas,
+              canvasView.drawing.dataRepresentation() != noteStore.currentPage.drawing.dataRepresentation() else { return }
+        noteStore.currentPage.drawing = canvasView.drawing
+        noteStore.savePages()
+    }
+
+    private func startExport(_ request: ExportRequest) {
+        // Freeze the selected content while a multi-page export yields to the UI.
+        let pages = request.pages.map {
+            NotePage(id: $0.id, title: $0.title, drawing: $0.drawing,
+                     paperStyle: $0.paperStyle, createdAt: $0.createdAt)
+        }
+        let showWatermark = !proStore.isPro
+        exportTotal = pages.count
+        exportProgress = 0
+        isPreparingExport = true
+        exportTask = Task { @MainActor in
+            defer {
+                isPreparingExport = false
+                exportTask = nil
+            }
+            do {
+                let url: URL
+                if request.format == .pdf && pages.count > 1 {
+                    url = try await NoteExporter.exportPDF(pages: pages, showWatermark: showWatermark) {
+                        exportProgress = $0
+                    }
+                } else {
+                    try Task.checkCancellation()
+                    url = try NoteExporter.export(pages: pages, format: request.format, showWatermark: showWatermark)
+                }
+                sharePayload = SharePayload(items: [url])
+            } catch is CancellationError {
+                // A cancelled job removes its unfinished file and returns to the notes.
+            } catch {
+                exportError = error.localizedDescription
+            }
+        }
+    }
+
+    private func finishSheet() {
+        if let context = pendingPaywall {
+            pendingPaywall = nil
+            presentPaywall(context)
+        } else if let request = pendingExport {
+            pendingExport = nil
+            startExport(request)
+        }
     }
 
     private func applyLaunchOptions() {
         #if DEBUG
-        if DemoData.isEnabled {
-            // Show the Cornell page (page 0) for the canvas screenshot — has a clear
-            // template visible at this zoom and represents the app's primary use case.
-            let demoIdx = 0
-            if demoIdx < noteStore.pages.count {
-                noteStore.currentPageIndex = demoIdx
-                canvasView.drawing = noteStore.pages[demoIdx].drawing
-            }
-            canvasView.setZoomScale(0.45, animated: false)
-            canvasView.setContentOffset(CGPoint(x: 0, y: 0), animated: false)
-        }
-        guard let screen = DemoData.initialScreen else { return }
-        switch screen {
+        guard DemoData.isEnabled else { return }
+        switch DemoData.initialScreen {
         case "sidebar": showSidebar = true
         case "settings": showSettings = true
         case "trash": showTrash = true
-        case "paywall": showPaywall = true
+        case "paywall": presentPaywall(.general)
+        case "templates": showTemplates = true
+        case "export": exportPage = noteStore.currentPage
         default: break
         }
         #endif
-    }
-
-    private func saveCurrentDrawing() {
-        if noteStore.currentPageIndex < noteStore.pages.count {
-            noteStore.pages[noteStore.currentPageIndex].drawing = canvasView.drawing
-            noteStore.savePages()
-        }
-    }
-
-    @MainActor
-    private func exportNote(page: NotePage) {
-        let exportView = ExportContainer(page: page, showWatermark: !proStore.isPro)
-        let renderer = ImageRenderer(content: exportView)
-        renderer.scale = 2.0
-
-        var items: [Any] = []
-        if let image = renderer.uiImage { items.append(image) }
-
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(page.title).pdf")
-        renderer.render { size, context in
-            var box = CGRect(origin: .zero, size: size)
-            guard let pdfContext = CGContext(tempURL as CFURL, mediaBox: &box, nil) else { return }
-            pdfContext.beginPDFPage(nil)
-            context(pdfContext)
-            pdfContext.endPDFPage()
-            pdfContext.closePDF()
-            items.append(tempURL)
-        }
-
-        if !items.isEmpty {
-            exportItems = items
-            isExporting = true
-        }
     }
 }
 
@@ -416,38 +493,10 @@ struct TrashView: View {
     }
 }
 
-// MARK: - Export container
-
-struct ExportContainer: View {
-    let page: NotePage
-    let showWatermark: Bool
-
-    var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            ZStack {
-                PaperBackgroundView(style: page.paperStyle)
-                Image(uiImage: page.drawing.image(from: CGRect(x: 0, y: 0, width: 3000, height: 5000), scale: 1.0))
-                    .resizable()
-            }
-            if showWatermark {
-                Text("SimplePenNote")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.gray.opacity(0.45))
-                    .padding(12)
-            }
-        }
-        .frame(width: 1500, height: 2500)
-    }
-}
-
 struct ActivityViewController: UIViewControllerRepresentable {
     var activityItems: [Any]
     func makeUIViewController(context: Context) -> UIActivityViewController {
         UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
     }
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
-
-#Preview {
-    ContentView()
 }

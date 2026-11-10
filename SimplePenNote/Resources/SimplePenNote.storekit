@@ -8,12 +8,12 @@
       "internalID" : "spnpro001",
       "localizations" : [
         {
-          "description" : "무제한 페이지, 워터마크 없는 PNG·PDF 내보내기. 일회 결제로 모든 기능 영구 사용.",
+          "description" : "무제한 페이지, 워터마크 없는 PNG·PDF, 여러 노트를 하나의 PDF로. 일회 결제, 구독 없음.",
           "displayName" : "Pro",
           "locale" : "ko_KR"
         },
         {
-          "description" : "Unlimited pages. Watermark-free PNG/PDF export.",
+          "description" : "Unlimited pages. Watermark-free PNG/PDF export. Combine notes into one PDF. One-time purchase.",
           "displayName" : "Pro",
           "locale" : "en_US"
         }

@@ -114,7 +114,7 @@ struct LockScreenView: View {
 struct SettingsView: View {
     @ObservedObject var lockManager: LockManager
     @ObservedObject var proStore: ProStore
-    @Binding var showPaywall: Bool
+    let onUpgrade: () -> Void
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -126,20 +126,26 @@ struct SettingsView: View {
                             .foregroundColor(.indigo)
                     } else {
                         Button {
+                            onUpgrade()
                             dismiss()
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                showPaywall = true
-                            }
                         } label: {
                             Label("SimplePenNote Pro로 업그레이드", systemImage: "sparkles")
                         }
                         Button {
                             Task { await proStore.restore() }
                         } label: {
-                            Label("구매 복원", systemImage: "arrow.clockwise")
-                                .foregroundColor(.secondary)
+                            HStack {
+                                Label("구매 복원", systemImage: "arrow.clockwise")
+                                if proStore.isRestoring { Spacer(); ProgressView() }
+                            }
+                            .foregroundColor(.secondary)
                         }
+                        .disabled(proStore.isBusy)
                     }
+                }
+
+                if let message = proStore.statusMessage {
+                    Section { Text(message).font(.subheadline).foregroundStyle(.secondary) }
                 }
 
                 Section("보안") {
@@ -169,8 +175,17 @@ struct SettingsView: View {
                     Link(destination: URL(string: "https://blue-code.github.io/legal/simplepennote/support.html")!) {
                         Label("고객지원", systemImage: "questionmark.circle")
                     }
+                    Link(destination: FeedbackLink.url) {
+                        Label("피드백 보내기", systemImage: "bubble.left.and.text.bubble.right")
+                    }
                 }
             }
+            .alert("구매 확인", isPresented: Binding(
+                get: { proStore.purchaseError != nil },
+                set: { if !$0 { proStore.purchaseError = nil } }
+            )) {
+                Button("확인", role: .cancel) {}
+            } message: { Text(proStore.purchaseError ?? "") }
             .navigationTitle("설정")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -179,5 +194,35 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+}
+
+/// The "피드백 보내기" destination — the blue-code feedback form, shared across every app and
+/// filtered by the `app` field (AppCommonSkill `06-legal-privacy-review.md`).
+///
+/// The form is *opened*, never posted to: the user fills it in Safari, a separate app, so this app
+/// still collects nothing and its `DATA_NOT_COLLECTED` privacy label stays honest. An in-app POST
+/// would break that — don't add one.
+///
+/// Version and locale are prefilled so a report arrives already saying which build and language it
+/// came from; both are visible in the form before the user submits.
+private enum FeedbackLink {
+    private static let appSlug = "simplepennote"
+
+    static var url: URL {
+        var components = URLComponents(
+            string: "https://docs.google.com/forms/d/e/"
+                + "1FAIpQLSekD7Uyg8Oa5WVWX0zV15PEyWS2y9A5sIGxA_pSeAcvWVtf6Q/viewform")!
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = info?["CFBundleVersion"] as? String ?? "1"
+        components.queryItems = [
+            URLQueryItem(name: "usp", value: "pp_url"),
+            URLQueryItem(name: "entry.1556462282", value: appSlug),
+            URLQueryItem(name: "entry.88571063", value: "\(short) (\(build))"),
+            URLQueryItem(name: "entry.1277534382", value: Locale.current.identifier),
+        ]
+        // Safe: the base is a string literal and URLComponents percent-encodes every value.
+        return components.url!
     }
 }

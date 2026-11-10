@@ -2,7 +2,7 @@ default_platform(:ios)
 
 API_KEY_ID     = "33P5W93GJQ"
 API_ISSUER_ID  = "ed28e2d3-ce1d-4d24-8e58-373132e4b554"
-API_KEY_PATH   = "/Volumes/SSD/DEV_SSD/MY/SimplePenNote/fastlane/AuthKey_33P5W93GJQ.p8"
+API_KEY_PATH   = ENV.fetch("ASC_KEY_PATH", File.expand_path("AuthKey_33P5W93GJQ.p8", __dir__))
 
 platform :ios do
 
@@ -134,11 +134,8 @@ platform :ios do
       in_house: false
     )
 
-    begin
-      build_num = latest_testflight_build_number(api_key: api_key) + 1
-    rescue
-      build_num = 1
-    end
+    build_num = [(latest_testflight_build_number(api_key: api_key, initial_build_number: 0) rescue 9), 9].max + 1
+    UI.message("Using build number: #{build_num}")
 
     get_provisioning_profile(
       api_key: api_key,
@@ -154,9 +151,11 @@ platform :ios do
     )
 
     update_code_signing_settings(
-      use_automatic_signing: true,
+      use_automatic_signing: false,
       path: "SimplePenNote.xcodeproj",
-      team_id: "KUDC7C6Z9H"
+      team_id: "KUDC7C6Z9H",
+      code_sign_identity: "Apple Distribution",
+      profile_name: ENV["SIGH_NAME"] || "com.blueCode.SimplePenNote AppStore"
     )
 
     build_app(
@@ -166,7 +165,12 @@ platform :ios do
       clean: true,
       output_directory: "./build",
       output_name: "SimplePenNote.ipa",
-      xcargs: "-allowProvisioningUpdates"
+      export_options: {
+        signingStyle: "manual",
+        provisioningProfiles: {
+          "com.blueCode.SimplePenNote" => ENV["SIGH_NAME"] || "com.blueCode.SimplePenNote AppStore"
+        }
+      }
     )
 
     upload_to_app_store(
@@ -193,8 +197,6 @@ platform :ios do
 
   desc "TestFlight 배포 (iOS)"
   lane :beta do
-    generate
-
     api_key = app_store_connect_api_key(
       key_id: API_KEY_ID,
       issuer_id: API_ISSUER_ID,
@@ -203,29 +205,40 @@ platform :ios do
       in_house: false
     )
 
-    begin
-      build_num = latest_testflight_build_number(api_key: api_key) + 1
-    rescue
-      build_num = 1
-    end
+    # Fail on API errors rather than guessing a build number already used by Apple.
+    latest = latest_testflight_build_number(
+      api_key: api_key,
+      app_identifier: "com.blueCode.SimplePenNote",
+      initial_build_number: 0
+    )
+    spec_path = File.expand_path("../project.yml", __dir__)
+    spec = File.read(spec_path)
+    local_build = spec.match(/CURRENT_PROJECT_VERSION:\s*(\d+)/)[1].to_i
+    build_num = [latest.to_i + 1, local_build].max
+    spec = spec.sub(/CURRENT_PROJECT_VERSION:\s*\d+/, "CURRENT_PROJECT_VERSION: #{build_num}")
+    spec = spec.sub(/CFBundleVersion:\s*"\d+"/, "CFBundleVersion: \"#{build_num}\"")
+    File.write(spec_path, spec)
+    UI.message("Using build number: #{build_num}")
+    generate
 
+    # Reuse a valid distribution profile; do not revoke or regenerate it on every beta.
     get_provisioning_profile(
       api_key: api_key,
       app_identifier: "com.blueCode.SimplePenNote",
       team_id: "KUDC7C6Z9H",
       adhoc: false,
-      force: true
-    )
-
-    increment_build_number(
-      build_number: build_num,
-      xcodeproj: "SimplePenNote.xcodeproj"
+      provisioning_name: "com.blueCode.SimplePenNote AppStore",
+      output_path: "./build/signing",
+      readonly: true
     )
 
     update_code_signing_settings(
-      use_automatic_signing: true,
+      use_automatic_signing: false,
       path: "SimplePenNote.xcodeproj",
-      team_id: "KUDC7C6Z9H"
+      targets: ["SimplePenNote"],
+      team_id: "KUDC7C6Z9H",
+      code_sign_identity: "Apple Distribution",
+      profile_name: ENV["SIGH_NAME"] || "com.blueCode.SimplePenNote AppStore"
     )
 
     build_app(
@@ -235,13 +248,24 @@ platform :ios do
       clean: true,
       output_directory: "./build",
       output_name: "SimplePenNote.ipa",
-      xcargs: "-allowProvisioningUpdates"
+      export_options: {
+        signingStyle: "manual",
+        provisioningProfiles: {
+          "com.blueCode.SimplePenNote" => ENV["SIGH_NAME"] || "com.blueCode.SimplePenNote AppStore"
+        }
+      }
     )
 
     upload_to_testflight(
       api_key: api_key,
+      app_identifier: "com.blueCode.SimplePenNote",
       ipa: "./build/SimplePenNote.ipa",
-      skip_waiting_for_build_processing: true
+      changelog: File.read(File.expand_path("metadata/ko/release_notes.txt", __dir__)),
+      distribute_external: false,
+      notify_external_testers: false,
+      skip_waiting_for_build_processing: false,
+      wait_processing_interval: 30,
+      wait_processing_timeout_duration: 1800
     )
   end
 end

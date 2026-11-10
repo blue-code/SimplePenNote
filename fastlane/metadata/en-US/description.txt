@@ -1,11 +1,11 @@
 SimplePenNote — pen and paper, nothing more.
 
-Tired of bloated note apps? SimplePenNote keeps only what you actually need. Opens in a second. No ads. No notifications. No accounts.
+Tired of bloated note apps? SimplePenNote keeps only what you actually need. Start writing right away. No ads. No notifications. No accounts.
 
 -- Six paper templates
-Blank, grid, lined, Cornell notes, weekly planner, and study (problem/answer). Switch with one tap.
+Blank, grid, lined, Cornell notes, weekly planner, and study (problem/answer). Preview each template before creating a note.
 
--- Infinite zoomable canvas
+-- Spacious zoomable canvas
 Built on PencilKit. Pinch to zoom freely; one page holds plenty.
 
 -- Face ID / Touch ID app lock
@@ -18,7 +18,10 @@ Accidentally deleted notes are recoverable for 30 days.
 Notes sync across your iPhone and iPad signed in with the same Apple ID. No third-party servers — notes live only in your private iCloud.
 
 -- PNG / PDF export
-Clean exports including the paper template.
+Share your handwriting and paper template as a PDF document or PNG image. Free exports include a watermark.
+
+-- Find and reuse notes
+Search by title, duplicate notes, and choose pen colors and widths.
 
 --------------------
 
@@ -28,6 +31,7 @@ Use up to 5 pages free. To unlock unlimited pages and watermark-free export, buy
 
 · Unlimited pages
 · Watermark-free PNG / PDF export
+· Combine selected notes into one PDF
 · One-time purchase, lifetime access
 · Works on all your devices with the same Apple ID
 

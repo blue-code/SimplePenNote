@@ -107,24 +107,19 @@ private enum CK {
 // MARK: - NotePage <-> CKRecord
 
 extension NotePage {
-    func toCKRecord() -> CKRecord {
+    func toCKRecord() throws -> CKRecord {
         let recordID = CKRecord.ID(recordName: id.uuidString)
         let record = CKRecord(recordType: CK.recordType, recordID: recordID)
         record[CK.Field.title] = title as CKRecordValue
         record[CK.Field.paperStyle] = paperStyle.rawValue as CKRecordValue
         record[CK.Field.createdAt] = createdAt as CKRecordValue
-        if let deletedAt {
-            record[CK.Field.deletedAt] = deletedAt as CKRecordValue
-        }
+        // Explicitly clear the tombstone when restoring a cloud-backed page.
+        record[CK.Field.deletedAt] = deletedAt as CKRecordValue?
         // Drawing → CKAsset via temp file
         let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(id.uuidString).pkdrawing")
-        do {
-            try drawing.dataRepresentation().write(to: tempURL, options: .atomic)
-            record[CK.Field.drawing] = CKAsset(fileURL: tempURL)
-        } catch {
-            // Drawing write failed — record will be saved without drawing data
-        }
+            .appendingPathComponent("\(id.uuidString)-\(UUID().uuidString).pkdrawing")
+        try drawing.dataRepresentation().write(to: tempURL, options: .atomic)
+        record[CK.Field.drawing] = CKAsset(fileURL: tempURL)
         return record
     }
 
@@ -136,13 +131,11 @@ extension NotePage {
         let createdAt = record[CK.Field.createdAt] as? Date ?? record.creationDate ?? Date()
         let deletedAt = record[CK.Field.deletedAt] as? Date
 
-        var drawing = PKDrawing()
-        if let asset = record[CK.Field.drawing] as? CKAsset,
-           let url = asset.fileURL,
-           let data = try? Data(contentsOf: url),
-           let parsed = try? PKDrawing(data: data) {
-            drawing = parsed
-        }
+        // An unreadable asset must not replace a good local drawing with a blank.
+        guard let asset = record[CK.Field.drawing] as? CKAsset,
+              let url = asset.fileURL,
+              let data = try? Data(contentsOf: url),
+              let drawing = try? PKDrawing(data: data) else { return nil }
         return NotePage(id: id, title: title, drawing: drawing,
                         paperStyle: paperStyle, createdAt: createdAt, deletedAt: deletedAt)
     }
@@ -153,38 +146,59 @@ extension NotePage {
 @MainActor
 class NoteStore: ObservableObject {
     @Published var pages: [NotePage] = []
-    @Published var currentPageIndex: Int = 0
+    @Published var currentPageIndex: Int = 0 {
+        didSet { persistCurrentSelection() }
+    }
     @Published var isInitialSyncing: Bool = false
+    @Published private(set) var cloudMergeRevision: Int = 0
 
     private lazy var container = CKContainer(identifier: CK.containerID)
     private var database: CKDatabase { container.privateCloudDatabase }
 
     private let localCacheKey = "SimplePenNote_LocalCache_v2"
-    private let didMigrateFromKVSKey = "SimplePenNote_DidMigrateFromKVS_v1"
-    private let legacyKVSKey = "SimplePenNote_Pages"
+    private let pendingSyncKey = "SimplePenNote_PendingSync_v1"
+    private let pendingDeletionKey = "SimplePenNote_PendingDeletion_v1"
+    private let selectionKey = "SimplePenNote_CurrentPage_v1"
 
     private var pendingCloudSync = Set<UUID>()
+    private var pendingCloudDeletion = Set<UUID>()
+    // Revisions prevent a completed upload from clearing edits made during its await.
+    private var localRevisions: [UUID: UInt64] = [:]
+    private var isFlushing = false
+    private let defaults: UserDefaults
+    private let syncWithCloud: Bool
+    private let isDemoMode: Bool
 
-    init() {
+    init(defaults: UserDefaults = .standard, syncWithCloud: Bool = true) {
         #if DEBUG
-        if DemoData.isEnabled {
+        self.isDemoMode = DemoData.isEnabled
+        #else
+        self.isDemoMode = false
+        #endif
+        self.defaults = defaults
+        self.syncWithCloud = syncWithCloud && !isDemoMode
+        #if DEBUG
+        if isDemoMode {
             self.pages = DemoData.buildPages()
             self.currentPageIndex = 0
             return
         }
         #endif
 
+        loadPendingOperations()
         loadFromLocalCache()
         if pages.filter({ $0.deletedAt == nil }).isEmpty {
             let first = NotePage(title: "첫 영감", paperStyle: .grid)
             pages.append(first)
-            pendingCloudSync.insert(first.id)
+            currentPageIndex = pages.count - 1
+            enqueueSync(first.id)
             saveLocalCache()
         }
 
-        Task { [weak self] in
-            await self?.migrateFromKVSIfNeeded()
-            await self?.fetchAllFromCloud()
+        if syncWithCloud {
+            Task { [weak self] in
+                await self?.fetchAllFromCloud()
+            }
         }
     }
 
@@ -193,12 +207,10 @@ class NoteStore: ObservableObject {
     var currentPage: NotePage {
         let active = activePages
         if active.isEmpty {
-            let p = NotePage()
-            pages.append(p)
-            currentPageIndex = pages.count - 1
-            return p
+            addNewPage()
+            return pages[currentPageIndex]
         }
-        if currentPageIndex >= pages.count || pages[currentPageIndex].deletedAt != nil {
+        if !pages.indices.contains(currentPageIndex) || pages[currentPageIndex].deletedAt != nil {
             currentPageIndex = pages.firstIndex(where: { $0.deletedAt == nil }) ?? 0
         }
         return pages[currentPageIndex]
@@ -213,11 +225,21 @@ class NoteStore: ObservableObject {
             .sorted { ($0.deletedAt ?? .distantPast) > ($1.deletedAt ?? .distantPast) }
     }
 
-    func addNewPage() {
-        let new = NotePage(title: "노트 \(activePages.count + 1)")
+    func addNewPage(title: String? = nil, paperStyle: PaperStyle = .grid) {
+        let new = NotePage(title: title ?? "노트 \(activePages.count + 1)", paperStyle: paperStyle)
         pages.append(new)
         currentPageIndex = pages.count - 1
-        pendingCloudSync.insert(new.id)
+        enqueueSync(new.id)
+        saveLocalCache()
+        scheduleFlush()
+    }
+
+    func duplicatePage(_ page: NotePage) {
+        let copy = NotePage(title: "\(page.title) 복사본", drawing: page.drawing,
+                            paperStyle: page.paperStyle)
+        pages.append(copy)
+        currentPageIndex = pages.count - 1
+        enqueueSync(copy.id)
         saveLocalCache()
         scheduleFlush()
     }
@@ -226,8 +248,8 @@ class NoteStore: ObservableObject {
     /// CloudKit upload is debounced (2.5s) and triggered on flush points.
     /// For sidebar edits to non-current pages, callers should use markDirty(_:) instead.
     func savePages() {
-        if currentPageIndex < pages.count {
-            pendingCloudSync.insert(pages[currentPageIndex].id)
+        if pages.indices.contains(currentPageIndex) {
+            enqueueSync(pages[currentPageIndex].id)
         }
         saveLocalCache()
         scheduleFlush()
@@ -235,16 +257,18 @@ class NoteStore: ObservableObject {
 
     /// Mark a page for immediate cloud sync (used when changing paperStyle, title, etc.)
     func markDirty(_ page: NotePage) {
-        pendingCloudSync.insert(page.id)
+        objectWillChange.send()
+        enqueueSync(page.id)
         saveLocalCache()
         scheduleFlush()
     }
 
     /// Soft delete — page goes to trash with deletedAt = now.
     func softDelete(_ page: NotePage) {
+        objectWillChange.send()
         page.deletedAt = Date()
-        pendingCloudSync.insert(page.id)
-        if currentPageIndex < pages.count, pages[currentPageIndex].id == page.id {
+        enqueueSync(page.id)
+        if pages.indices.contains(currentPageIndex), pages[currentPageIndex].id == page.id {
             currentPageIndex = pages.firstIndex(where: { $0.deletedAt == nil }) ?? 0
         }
         // Ensure at least one active page remains.
@@ -252,7 +276,7 @@ class NoteStore: ObservableObject {
             let fresh = NotePage(title: "새 노트", paperStyle: .grid)
             pages.append(fresh)
             currentPageIndex = pages.count - 1
-            pendingCloudSync.insert(fresh.id)
+            enqueueSync(fresh.id)
         }
         saveLocalCache()
         scheduleFlush()
@@ -260,20 +284,24 @@ class NoteStore: ObservableObject {
 
     /// Restore from trash.
     func restore(_ page: NotePage) {
+        objectWillChange.send()
         page.deletedAt = nil
-        pendingCloudSync.insert(page.id)
+        enqueueSync(page.id)
         saveLocalCache()
         scheduleFlush()
     }
 
     /// Permanently delete a page (called from trash or by purge).
     func purge(_ page: NotePage) {
+        let selectedID = pages.indices.contains(currentPageIndex) ? pages[currentPageIndex].id : nil
         let id = page.id
         pages.removeAll { $0.id == id }
+        pendingCloudSync.remove(id)
+        localRevisions.removeValue(forKey: id)
+        pendingCloudDeletion.insert(id)
+        recoverSelection(preferredID: selectedID)
         saveLocalCache()
-        Task { [weak self] in
-            await self?.deleteFromCloud(recordName: id.uuidString)
-        }
+        flushNow()
     }
 
     /// Auto-purge: remove trashed pages older than 30 days.
@@ -295,36 +323,61 @@ class NoteStore: ObservableObject {
     // MARK: - Local cache
 
     private func loadFromLocalCache() {
-        guard let data = UserDefaults.standard.data(forKey: localCacheKey),
+        guard let data = defaults.data(forKey: localCacheKey),
               let decoded = try? JSONDecoder().decode([NotePage].self, from: data) else {
             return
         }
         self.pages = decoded
+        let selectedID = defaults.string(forKey: selectionKey).flatMap(UUID.init(uuidString:))
+        if let selectedID, let index = pages.firstIndex(where: { $0.id == selectedID && $0.deletedAt == nil }) {
+            currentPageIndex = index
+        } else {
+            currentPageIndex = pages.firstIndex(where: { $0.deletedAt == nil }) ?? 0
+        }
+    }
+
+    private func persistCurrentSelection() {
+        guard !isDemoMode, pages.indices.contains(currentPageIndex) else { return }
+        defaults.set(pages[currentPageIndex].id.uuidString, forKey: selectionKey)
+    }
+
+    private func loadPendingOperations() {
+        pendingCloudSync = Set((defaults.stringArray(forKey: pendingSyncKey) ?? [])
+            .compactMap(UUID.init(uuidString:)))
+        pendingCloudDeletion = Set((defaults.stringArray(forKey: pendingDeletionKey) ?? [])
+            .compactMap(UUID.init(uuidString:)))
+    }
+
+    private func savePendingOperations() {
+        guard !isDemoMode else { return }
+        defaults.set(pendingCloudSync.map(\.uuidString), forKey: pendingSyncKey)
+        defaults.set(pendingCloudDeletion.map(\.uuidString), forKey: pendingDeletionKey)
+    }
+
+    private func enqueueSync(_ id: UUID) {
+        pendingCloudSync.insert(id)
+        localRevisions[id, default: 0] += 1
+    }
+
+    private func recoverSelection(preferredID: UUID?) {
+        if let preferredID, let index = pages.firstIndex(where: { $0.id == preferredID && $0.deletedAt == nil }) {
+            currentPageIndex = index
+        } else if let index = pages.firstIndex(where: { $0.deletedAt == nil }) {
+            currentPageIndex = index
+        } else {
+            let fresh = NotePage(title: "첫 영감", paperStyle: .grid)
+            pages.append(fresh)
+            enqueueSync(fresh.id)
+            currentPageIndex = pages.count - 1
+        }
     }
 
     private func saveLocalCache() {
+        guard !isDemoMode else { return }
         guard let data = try? JSONEncoder().encode(pages) else { return }
-        UserDefaults.standard.set(data, forKey: localCacheKey)
-    }
-
-    // MARK: - Migration from old NSUbiquitousKeyValueStore
-
-    private func migrateFromKVSIfNeeded() async {
-        guard !UserDefaults.standard.bool(forKey: didMigrateFromKVSKey) else { return }
-        let store = NSUbiquitousKeyValueStore.default
-        store.synchronize()
-        if let data = store.data(forKey: legacyKVSKey),
-           let oldPages = try? JSONDecoder().decode([NotePage].self, from: data) {
-            // Merge into local pages by id (don't duplicate).
-            for old in oldPages where !pages.contains(where: { $0.id == old.id }) {
-                pages.append(old)
-                pendingCloudSync.insert(old.id)
-            }
-            saveLocalCache()
-            store.removeObject(forKey: legacyKVSKey)
-            store.synchronize()
-        }
-        UserDefaults.standard.set(true, forKey: didMigrateFromKVSKey)
+        defaults.set(data, forKey: localCacheKey)
+        savePendingOperations()
+        persistCurrentSelection()
     }
 
     // MARK: - Cloud operations
@@ -356,66 +409,93 @@ class NoteStore: ObservableObject {
             }
 
             mergeFromCloud(fetched: fetched)
+            isInitialSyncing = false
             // Now flush anything pending (local-only pages that haven't been pushed).
             await flushPendingCloudSync()
             // Auto-purge expired trash.
             purgeExpiredTrash()
         } catch {
             // Likely: no iCloud account, network error, or schema not yet deployed.
-            // Local cache continues working.
+            // Local cache continues working. Preserve the queue for a later flush.
         }
     }
 
-    /// Merge cloud pages into local. Cloud is source of truth for known IDs;
-    /// pages that exist locally but not in cloud are pushed up (pending).
+    /// Keep local edits queued for upload; refresh unmodified pages from iCloud.
     private func mergeFromCloud(fetched: [NotePage]) {
-        var merged: [UUID: NotePage] = [:]
-        for p in pages { merged[p.id] = p }
-        for cloudPage in fetched {
-            // Cloud version wins for existing ids (last-write-wins via record modificationDate is implicit).
-            merged[cloudPage.id] = cloudPage
+        let selectedID = pages.indices.contains(currentPageIndex) ? pages[currentPageIndex].id : nil
+        var merged = Dictionary(uniqueKeysWithValues: pages.map { ($0.id, $0) })
+        for cloudPage in fetched where !pendingCloudDeletion.contains(cloudPage.id) {
+            if !pendingCloudSync.contains(cloudPage.id) {
+                merged[cloudPage.id] = cloudPage
+            }
         }
-        // Pages only present locally (not in cloud) need to be pushed.
-        let cloudIDs = Set(fetched.map { $0.id })
-        for p in pages where !cloudIDs.contains(p.id) {
-            pendingCloudSync.insert(p.id)
+        let cloudIDs = Set(fetched.map(\.id))
+        for page in pages where !cloudIDs.contains(page.id) && !pendingCloudDeletion.contains(page.id) {
+            pendingCloudSync.insert(page.id)
         }
-        pages = Array(merged.values).sorted { $0.createdAt < $1.createdAt }
-        // Recover currentPageIndex
-        if pages.isEmpty {
-            let fresh = NotePage(title: "첫 영감", paperStyle: .grid)
-            pages.append(fresh)
-            pendingCloudSync.insert(fresh.id)
-            currentPageIndex = 0
-        } else if currentPageIndex >= pages.count {
-            currentPageIndex = max(0, pages.count - 1)
-        }
+        pages = merged.values.filter { !pendingCloudDeletion.contains($0.id) }
+            .sorted { $0.createdAt < $1.createdAt }
+        recoverSelection(preferredID: selectedID)
         saveLocalCache()
+        cloudMergeRevision += 1
     }
 
     private func flushPendingCloudSync() async {
-        let snapshot = pendingCloudSync
-        pendingCloudSync.removeAll()
-        for id in snapshot {
-            guard let page = pages.first(where: { $0.id == id }) else { continue }
-            let record = page.toCKRecord()
+        // A fetch started before an upload can otherwise merge its stale snapshot
+        // after that upload has cleared the local dirty flag.
+        guard syncWithCloud, !isInitialSyncing, !isFlushing else { return }
+        isFlushing = true
+        defer {
+            isFlushing = false
+            savePendingOperations()
+        }
+
+        // Keep operations queued until CloudKit confirms each result, including
+        // partial failures returned by a non-atomic modifyRecords call.
+        for id in pendingCloudDeletion {
+            let recordID = CKRecord.ID(recordName: id.uuidString)
             do {
-                _ = try await database.modifyRecords(saving: [record], deleting: [],
-                                                     savePolicy: .changedKeys, atomically: false)
+                let result = try await database.modifyRecords(saving: [], deleting: [recordID],
+                                                              savePolicy: .changedKeys, atomically: false)
+                if let deleted = result.deleteResults[recordID] {
+                    do {
+                        try deleted.get()
+                        pendingCloudDeletion.remove(id)
+                    } catch let error as CKError where error.code == .unknownItem {
+                        pendingCloudDeletion.remove(id)
+                    }
+                }
+            } catch let error as CKError where error.code == .unknownItem {
+                pendingCloudDeletion.remove(id)
             } catch {
-                // Re-queue on failure.
-                pendingCloudSync.insert(id)
+                // Durable queue retries on the next flush or app launch.
             }
         }
-    }
 
-    private func deleteFromCloud(recordName: String) async {
-        let recordID = CKRecord.ID(recordName: recordName)
-        do {
-            _ = try await database.modifyRecords(saving: [], deleting: [recordID],
-                                                 savePolicy: .changedKeys, atomically: false)
-        } catch {
-            // Will retry on next purge cycle.
+        for id in pendingCloudSync {
+            guard !pendingCloudDeletion.contains(id), let page = pages.first(where: { $0.id == id }) else {
+                pendingCloudSync.remove(id)
+                continue
+            }
+            let revision = localRevisions[id, default: 0]
+            do {
+                let record = try page.toCKRecord()
+                defer {
+                    if let url = (record[CK.Field.drawing] as? CKAsset)?.fileURL {
+                        try? FileManager.default.removeItem(at: url)
+                    }
+                }
+                let result = try await database.modifyRecords(saving: [record], deleting: [],
+                                                              savePolicy: .changedKeys, atomically: false)
+                if let saved = result.saveResults[record.recordID] {
+                    _ = try saved.get()
+                    if localRevisions[id, default: 0] == revision {
+                        pendingCloudSync.remove(id)
+                    }
+                }
+            } catch {
+                // Never discard the local drawing or its pending upload on failure.
+            }
         }
     }
 
@@ -424,6 +504,7 @@ class NoteStore: ObservableObject {
     private var flushTask: Task<Void, Never>?
 
     private func scheduleFlush() {
+        guard syncWithCloud else { return }
         flushTask?.cancel()
         flushTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 2_500_000_000) // 2.5s
