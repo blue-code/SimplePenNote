@@ -73,3 +73,5 @@ scripts/validate-note-model.sh
 서명 프로파일은 로컬 배포 인증서 `C599C444…`에 연결된 `com.blueCode.SimplePenNote AppStore C599C444`를 사용합니다. 기존 프로파일의 인증서는 로컬에 없으므로 대체 프로파일을 추가했으며 다른 인증서나 프로파일은 폐기하지 않았습니다.
 
 빌드 11은 업로드 후 Apple 처리 대기 중 필수 API 사용 사유 선언 누락을 발견하여 최종 배포에서 제외했습니다. 빌드 12에는 `PrivacyInfo.xcprivacy`에 앱 전용 UserDefaults 사용 사유 `CA92.1`을 추가했습니다. 적용 근거는 [Apple의 필수 API 사용 사유 규정](https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api)과 [UserDefaults 승인 사유](https://developer.apple.com/documentation/bundleresources/app-privacy-configuration/nsprivacyaccessedapitypes/nsprivacyaccessedapitype)입니다.
+
+추가 업로드 없이 현재 빌드의 Apple 처리 상태만 조회하려면 `fastlane ios beta_status`를 실행합니다. `PROCESSING`은 테스트 가능 상태가 아니므로 `VALID`와 내부 테스트 상태를 함께 확인해야 합니다.
