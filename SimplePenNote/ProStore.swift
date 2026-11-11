@@ -150,7 +150,7 @@ final class ProStore: ObservableObject {
 // MARK: - Paywall
 
 enum PaywallContext: String, Identifiable {
-    case general, pageLimit, cleanExport, batchExport
+    case general, pageLimit, cleanExport, batchExport, transparentExport
 
     var id: String { rawValue }
 
@@ -160,15 +160,17 @@ enum PaywallContext: String, Identifiable {
         case .pageLimit: return "다음 아이디어도\n계속 기록하세요."
         case .cleanExport: return "내 필기만 담아\n깔끔하게 공유하세요."
         case .batchExport: return "여러 장의 기록을\n하나의 PDF로."
+        case .transparentExport: return "배경 없이,\n내 스케치만 쏙."
         }
     }
 
     var subtitle: String {
         switch self {
-        case .general: return "SimplePenNote Pro로 필기부터 정리까지."
+        case .general: return "떠오른 생각을 마음껏 쓰고, 원하는 곳에 꺼내 쓰세요."
         case .pageLimit: return "무료 페이지 \(ProStore.freePageLimit)장을 모두 사용했습니다. Pro로 제한 없이 이어가세요."
-        case .cleanExport: return "제출할 과제, 공유할 회의록을 워터마크 없이 내보내세요."
+        case .cleanExport: return "짧은 메모와 스케치를 워터마크 없이 깔끔하게 공유하세요."
         case .batchExport: return "흩어진 노트를 한 파일로 모아 보관하고 공유하세요."
+        case .transparentExport: return "투명 PNG로 저장하거나 복사해 메시지, 문서, 디자인에 붙여넣으세요."
         }
     }
 }
@@ -196,8 +198,9 @@ struct PaywallView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 22) {
-                        benefitRow("square.stack.3d.up", "페이지 제한 없이", "공부, 회의, 아이디어를 원하는 만큼 기록")
+                        benefitRow("square.stack.3d.up", "페이지 제한 없이", "짧은 메모와 떠오른 아이디어를 원하는 만큼 기록")
                         benefitRow("square.and.arrow.up", "워터마크 없는 PNG · PDF", "내 필기만 깔끔하게 저장하고 공유")
+                        benefitRow("square.on.circle", "배경 없는 투명 PNG", "스케치만 저장하거나 복사해 다른 앱에 붙여넣기")
                         benefitRow("doc.on.doc", "여러 페이지를 하나의 PDF로", "선택한 노트를 한 파일로 묶어 내보내기")
                     }
                     .padding(22)

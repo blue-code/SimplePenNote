@@ -37,9 +37,12 @@ final class MonetizationFlowTests: XCTestCase {
     func testFreeExportOffersBothFormatsAndCleanExportUpgrade() {
         let app = launch(screen: "export")
         let pdf = app.buttons["PDF 문서로 공유"]
-        XCTAssertTrue(pdf.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["PNG 이미지로 공유"].exists)
+        XCTAssertTrue(app.navigationBars["내보내기"].waitForExistence(timeout: 10))
         XCTAssertTrue(text(containing: "무료 내보내기에는 SimplePenNote 워터마크", in: app).exists)
+        reveal(pdf, in: app)
+        XCTAssertTrue(pdf.exists)
+        let png = app.buttons["PNG 이미지로 공유"]
+        XCTAssertTrue(png.exists)
 
         let cleanExport = button(containing: "워터마크 없이 내보내기", in: app)
         if !cleanExport.isHittable { app.swipeUp() }
@@ -49,7 +52,36 @@ final class MonetizationFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["paywall.close"].waitForExistence(timeout: 5))
         XCTAssertTrue(text(containing: "내 필기만 담아", in: app).exists)
         app.buttons["paywall.close"].tap()
-        XCTAssertTrue(app.buttons["현재 노트 내보내기"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.switches["export.crop"].waitForExistence(timeout: 5))
+    }
+
+    func testQuickNoteOpensWithoutTemplatePicker() {
+        let app = launch(screen: "canvas", pageCount: 1)
+        app.buttons["바로 새 노트 만들기"].tap()
+        XCTAssertTrue(app.staticTexts["노트 2"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.navigationBars["새 노트"].exists)
+        XCTAssertTrue(app.buttons["펜 설정 펼치기"].exists)
+        app.buttons["펜 설정 펼치기"].tap()
+        XCTAssertTrue(app.buttons["파란 펜"].waitForExistence(timeout: 5))
+        app.buttons["파란 펜"].tap()
+        app.buttons["펜 설정 접기"].tap()
+        XCTAssertTrue(app.buttons["펜 설정 펼치기"].exists)
+    }
+
+    func testTransparentCopyShowsProAndReturnsToSelectedOptions() {
+        let app = launch(screen: "export")
+        let transparent = app.switches["export.transparent"]
+        XCTAssertTrue(transparent.waitForExistence(timeout: 10))
+        transparent.tap()
+        let copy = app.buttons["export.copyTransparent"]
+        if !copy.isHittable { app.swipeUp() }
+        copy.tap()
+        XCTAssertTrue(app.buttons["paywall.close"].waitForExistence(timeout: 5))
+        XCTAssertTrue(text(containing: "내 스케치만 쏙", in: app).exists)
+        app.buttons["paywall.close"].tap()
+        XCTAssertTrue(transparent.waitForExistence(timeout: 5))
+        XCTAssertEqual(transparent.value as? String, "1")
+        XCTAssertEqual(app.switches["export.crop"].value as? String, "1")
     }
 
     func testTemplateGalleryShowsSixFreeStylesAndCanBeClosed() {
@@ -65,12 +97,19 @@ final class MonetizationFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["현재 노트 내보내기"].waitForExistence(timeout: 5))
     }
 
-    private func launch(screen: String) -> XCUIApplication {
+    private func launch(screen: String, pageCount: Int = 5) -> XCUIApplication {
         let app = XCUIApplication()
         // Demo data is isolated from real notes and starts with five active pages.
-        app.launchArguments = ["-DemoMode", "1", "-OpenScreen", screen, "-AppleLanguages", "(ko)", "-AppleLocale", "ko_KR"]
+        app.launchArguments = ["-DemoMode", "1", "-OpenScreen", screen, "-DemoPageCount", String(pageCount), "-AppleLanguages", "(ko)", "-AppleLocale", "ko_KR"]
         app.launch()
         return app
+    }
+
+    private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
+        for _ in 0..<4 {
+            if element.exists && element.isHittable { return }
+            app.swipeUp()
+        }
     }
 
     private func button(containing label: String, in app: XCUIApplication) -> XCUIElement {

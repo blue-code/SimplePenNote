@@ -9,23 +9,6 @@ enum NoteExportFormat: String, CaseIterable, Identifiable {
     var displayName: String { rawValue.uppercased() }
 }
 
-enum NoteExportError: LocalizedError {
-    case noPages
-    case multipleImages
-    case renderingFailed
-
-    var errorDescription: String? {
-        switch self {
-        case .noPages:
-            return "내보낼 노트를 선택해 주세요."
-        case .multipleImages:
-            return "PNG는 한 페이지씩 내보낼 수 있습니다. 여러 페이지는 PDF를 선택해 주세요."
-        case .renderingFailed:
-            return "노트를 파일로 만들지 못했습니다. 다시 시도해 주세요."
-        }
-    }
-}
-
 /// All paper and ink use the canvas coordinate space before being reduced to
 /// the export size. In particular, grid spacing must shrink with the drawing.
 @MainActor
@@ -34,7 +17,7 @@ enum NoteExporter {
     static let outputSize = CGSize(width: 1500, height: 2500)
 
     static func export(pages: [NotePage], format: NoteExportFormat,
-                       showWatermark: Bool) throws -> URL {
+                       showWatermark: Bool, imageOptions: NoteImageExportOptions = .fullPage) throws -> URL {
         guard !pages.isEmpty else { throw NoteExportError.noPages }
         guard format != .png || pages.count == 1 else {
             throw NoteExportError.multipleImages
@@ -52,16 +35,7 @@ enum NoteExporter {
             switch format {
             case .png:
                 try autoreleasepool {
-                    let rendererFormat = UIGraphicsImageRendererFormat()
-                    rendererFormat.scale = 1
-                    rendererFormat.opaque = true
-                    let renderer = UIGraphicsImageRenderer(size: outputSize, format: rendererFormat)
-                    // Render first so failure can propagate out of the drawing closure.
-                    let paper = try paperImage(style: pages[0].paperStyle)
-                    let ink = drawingImage(for: pages[0])
-                    let image = renderer.image { _ in
-                        draw(paper: paper, ink: ink, showWatermark: showWatermark)
-                    }
+                    let image = try pngImage(page: pages[0], options: imageOptions, showWatermark: showWatermark)
                     guard let data = image.pngData() else { throw NoteExportError.renderingFailed }
                     try data.write(to: url, options: .atomic)
                 }
@@ -98,6 +72,11 @@ enum NoteExporter {
             try? FileManager.default.removeItem(at: directory)
             throw error
         }
+    }
+
+    static func pngImage(page: NotePage, options: NoteImageExportOptions,
+                         showWatermark: Bool) throws -> UIImage {
+        UIImage(cgImage: try NotePNGRenderer.render(page: page, options: options, showWatermark: showWatermark))
     }
 
     /// Yield between pages so large Pro exports keep the UI responsive and can be cancelled.
@@ -169,12 +148,16 @@ enum NoteExporter {
         ink.draw(in: bounds)
         guard showWatermark else { return }
 
+        drawWatermark(in: outputSize, bottomInset: 20)
+    }
+
+    private static func drawWatermark(in size: CGSize, bottomInset: CGFloat) {
         let text = NSAttributedString(string: "SimplePenNote", attributes: [
             .font: UIFont.systemFont(ofSize: 16, weight: .medium),
             .foregroundColor: UIColor.darkGray.withAlphaComponent(0.65)
         ])
-        let size = text.size()
-        text.draw(at: CGPoint(x: outputSize.width - size.width - 20,
-                              y: outputSize.height - size.height - 20))
+        let textSize = text.size()
+        text.draw(at: CGPoint(x: size.width - textSize.width - 20,
+                              y: size.height - textSize.height - bottomInset))
     }
 }

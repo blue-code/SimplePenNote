@@ -1,3 +1,4 @@
-• Preview paper templates, search note titles, and duplicate notes.
-• Pro can combine selected notes into one PDF.
-• Improved purchase and restore feedback and handwriting persistence.
+• Create a note with one tap. Your last pen color, width, and chosen paper are remembered.
+• A collapsible toolbar gives your handwriting more room.
+• Preview PNG exports and automatically crop unused space for free.
+• Pro now includes transparent PNG sharing and copying for use in other apps, also available to existing Pro owners.

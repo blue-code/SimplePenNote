@@ -7,8 +7,16 @@ struct ContentView: View {
     @StateObject private var lockManager = LockManager()
     @StateObject private var proStore = ProStore()
     @State private var canvasView = PKCanvasView()
-    @State private var selectedColor: Color = Color(white: 0.1)
-    @State private var selectedThickness: CGFloat = 4
+    @StateObject private var quickPreferences = QuickNotePreferences(persistChanges: {
+        #if DEBUG
+        return !DemoData.isEnabled
+        #else
+        return true
+        #endif
+    }())
+    @State private var showPenOptions = false
+    @State private var viewportPageID: UUID?
+    @State private var savedViewports: [UUID: CanvasViewport] = [:]
     @State private var isEraserMode = false
     @State private var eraserType: PKEraserTool.EraserType = .vector
     @State private var showSidebar = false
@@ -17,7 +25,8 @@ struct ContentView: View {
     @State private var paywallContext: PaywallContext?
     @State private var showTemplates = false
     @State private var showBatchExport = false
-    @State private var exportPage: NotePage?
+    @State private var exportSheet: ExportSheetRequest?
+    @State private var resumeExportSheet: ExportSheetRequest?
     @State private var sharePayload: SharePayload?
     @State private var pendingExport: ExportRequest?
     @State private var exportTask: Task<Void, Never>?
@@ -38,9 +47,19 @@ struct ContentView: View {
     private struct ExportRequest {
         let pages: [NotePage]
         let format: NoteExportFormat
+        var imageOptions = NoteImageExportOptions()
     }
 
-    private let penColors: [Color] = [Color(white: 0.1), .red, .blue, .green, .purple]
+    private struct ExportSheetRequest: Identifiable {
+        let id = UUID()
+        let page: NotePage
+        var options = NoteImageExportOptions()
+    }
+
+    private struct CanvasViewport {
+        let scale: CGFloat
+        let offset: CGPoint
+    }
 
     var body: some View {
         ZStack {
@@ -70,7 +89,7 @@ struct ContentView: View {
         GeometryReader { proxy in
             canvasContent
                 .onChange(of: proxy.size, initial: true) { _, size in
-                    fitPage(size: size)
+                    prepareViewport(size: size)
                 }
         }
         .safeAreaInset(edge: .top, spacing: 0) { canvasHeader }
@@ -86,26 +105,23 @@ struct ContentView: View {
                 pendingPaywall = .general
             }
         }
-        .sheet(item: $paywallContext) { PaywallView(proStore: proStore, context: $0) }
-        .sheet(isPresented: $showTemplates, onDismiss: finishSheet) {
-            TemplatePickerView { style in
-                guard proStore.isPro || noteStore.activePages.count < ProStore.freePageLimit else {
-                    pendingPaywall = .pageLimit
-                    return
-                }
-                saveCurrentDrawing()
-                noteStore.addNewPage(paperStyle: style)
-                loadCurrentDrawing()
-                showSidebar = false
+        .sheet(item: $paywallContext, onDismiss: {
+            if let request = resumeExportSheet {
+                resumeExportSheet = nil
+                exportSheet = request
             }
+        }) { PaywallView(proStore: proStore, context: $0) }
+        .sheet(isPresented: $showTemplates, onDismiss: finishSheet) {
+            TemplatePickerView { style in createPage(style: style, fromSheet: true) }
         }
-        .sheet(item: $exportPage, onDismiss: finishSheet) { page in
-            ExportOptionsView(page: page, isPro: proStore.isPro) { format in
-                pendingExport = ExportRequest(pages: [page], format: format)
-                exportPage = nil
-            } onUpgrade: {
-                exportPage = nil
-                pendingPaywall = .cleanExport
+        .sheet(item: $exportSheet, onDismiss: finishSheet) { request in
+            ExportOptionsView(page: request.page, proStore: proStore, initialOptions: request.options) { format, options in
+                pendingExport = ExportRequest(pages: [request.page], format: format, imageOptions: options)
+                exportSheet = nil
+            } onUpgrade: { context, options in
+                resumeExportSheet = ExportSheetRequest(page: request.page, options: options)
+                pendingPaywall = context
+                exportSheet = nil
             }
         }
         .sheet(isPresented: $showBatchExport, onDismiss: finishSheet) {
@@ -143,8 +159,8 @@ struct ContentView: View {
             PencilKitView(
                 canvasView: $canvasView,
                 paperStyle: noteStore.currentPage.paperStyle,
-                selectedColor: $selectedColor,
-                selectedThickness: $selectedThickness,
+                selectedColor: quickPreferences.penColor.color,
+                selectedThickness: quickPreferences.penWidth,
                 isEraserMode: $isEraserMode,
                 eraserType: $eraserType,
                 onDrawingChange: { drawing in
@@ -169,8 +185,9 @@ struct ContentView: View {
             }
             Spacer(minLength: 0)
             Button { requestNewPage() } label: { Image(systemName: "plus.square") }
-                .accessibilityLabel("템플릿으로 새 노트 만들기")
-            Button { saveCurrentDrawing(); exportPage = noteStore.currentPage } label: {
+                .accessibilityLabel("바로 새 노트 만들기")
+                .contextMenu { Button("종이를 골라 새 노트", systemImage: "square.grid.2x2") { requestTemplates() } }
+            Button { saveCurrentDrawing(); exportSheet = ExportSheetRequest(page: noteStore.currentPage) } label: {
                 Image(systemName: "square.and.arrow.up")
             }.accessibilityLabel("현재 노트 내보내기")
         }
@@ -180,43 +197,69 @@ struct ContentView: View {
     }
 
     private var drawingToolbar: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 14) {
-                ForEach(penColors, id: \.self) { color in
-                    Button { selectedColor = color; isEraserMode = false } label: {
-                        Circle().fill(color).frame(width: 26, height: 26)
-                            .padding(3)
-                            .overlay(Circle().stroke(!isEraserMode && selectedColor == color ? Color.primary : .clear, lineWidth: 2))
-                    }.accessibilityLabel(color == .red ? "빨간 펜" : color == .blue ? "파란 펜" : color == .green ? "초록 펜" : color == .purple ? "보라 펜" : "검정 펜")
-                }
-                Menu {
-                    ForEach([CGFloat(2), 4, 8, 14], id: \.self) { width in
-                        Button { selectedThickness = width; isEraserMode = false } label: {
-                            Label("펜 굵기 \(Int(width))", systemImage: selectedThickness == width ? "checkmark" : "pencil.tip")
-                        }
+        VStack(spacing: 8) {
+            if showPenOptions {
+                HStack(spacing: 4) {
+                    ForEach(NotePenColor.allCases) { pen in
+                        Button { quickPreferences.penColor = pen; isEraserMode = false } label: {
+                            Circle().fill(pen.color).frame(width: 24, height: 24).padding(5)
+                                .overlay(Circle().stroke(!isEraserMode && quickPreferences.penColor == pen ? Color.primary : .clear, lineWidth: 2))
+                                .frame(width: 44, height: 44)
+                        }.accessibilityLabel(pen.label)
                     }
-                } label: { Image(systemName: "lineweight") }
-                .accessibilityLabel("펜 굵기 선택")
+                    Spacer(minLength: 0)
+                    Menu {
+                        ForEach(QuickNotePreferences.widths, id: \.self) { width in
+                            Button { quickPreferences.penWidth = width; isEraserMode = false } label: {
+                                Label("펜 굵기 \(Int(width))", systemImage: quickPreferences.penWidth == width ? "checkmark" : "pencil.tip")
+                            }
+                        }
+                    } label: { Image(systemName: "lineweight").frame(width: 44, height: 44) }
+                    .accessibilityLabel("펜 굵기 선택")
+                }
+            }
+            HStack(spacing: 0) {
+                Button { isEraserMode = false } label: {
+                    Image(systemName: "pencil.tip").foregroundStyle(.primary)
+                        .overlay(alignment: .bottomTrailing) {
+                            Circle().fill(quickPreferences.penColor.color).frame(width: 8, height: 8)
+                                .overlay(Circle().stroke(Color.primary.opacity(0.4), lineWidth: 1))
+                        }
+                        .padding(8).background(!isEraserMode ? Color.indigo.opacity(0.1) : .clear, in: Circle())
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }.accessibilityLabel("펜으로 쓰기")
+                    .accessibilityValue("\(quickPreferences.penColor.label), 굵기 \(Int(quickPreferences.penWidth))")
                 Button {
                     if isEraserMode { eraserType = eraserType == .vector ? .bitmap : .vector }
                     isEraserMode = true
                 } label: {
                     Image(systemName: eraserType == .vector ? "eraser.line.dashed" : "eraser.fill")
                         .foregroundStyle(isEraserMode ? Color.pink : .primary)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                 }.accessibilityLabel("지우개, 다시 누르면 방식 전환")
-            }
-            HStack(spacing: 30) {
-                Button { canvasView.undoManager?.undo() } label: { Image(systemName: "arrow.uturn.backward") }
-                    .accessibilityLabel("실행 취소")
-                Button { canvasView.undoManager?.redo() } label: { Image(systemName: "arrow.uturn.forward") }
-                    .accessibilityLabel("다시 실행")
-                Button { fitPage() } label: { Label("한눈에 보기", systemImage: "arrow.down.right.and.arrow.up.left") }
-                    .font(.caption)
+                Button { canvasView.undoManager?.undo() } label: {
+                    Image(systemName: "arrow.uturn.backward").frame(maxWidth: .infinity, minHeight: 44)
+                }.accessibilityLabel("실행 취소")
+                Button { canvasView.undoManager?.redo() } label: {
+                    Image(systemName: "arrow.uturn.forward").frame(maxWidth: .infinity, minHeight: 44)
+                }.accessibilityLabel("다시 실행")
+                Menu {
+                    Button("쓰기 크기로 보기", systemImage: "pencil") { writingSize() }
+                    Button("필기 한눈에 보기", systemImage: "arrow.down.right.and.arrow.up.left") { fitContent() }
+                    Button("종이 전체 보기", systemImage: "rectangle") { fitPage() }
+                } label: {
+                    Image(systemName: "viewfinder").frame(maxWidth: .infinity, minHeight: 44)
+                }.accessibilityLabel("보기 크기 선택")
+                Button { withAnimation(.easeInOut(duration: 0.15)) { showPenOptions.toggle() } } label: {
+                    Image(systemName: showPenOptions ? "chevron.down" : "slider.horizontal.3")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }.accessibilityLabel(showPenOptions ? "펜 설정 접기" : "펜 설정 펼치기")
             }
         }
         .font(.title3)
         .buttonStyle(.plain)
-        .padding(.horizontal, 12).padding(.vertical, 14)
+        .padding(.horizontal, 12).padding(.vertical, 5)
+        .frame(maxWidth: 560)
         .frame(maxWidth: .infinity)
         .background(.regularMaterial)
     }
@@ -246,6 +289,8 @@ struct ContentView: View {
                                 .font(.caption.bold())
                         }.padding(14).background(Color.indigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
                     }
+                    Button("종이를 골라 새 노트", systemImage: "square.grid.2x2") { requestTemplates() }
+                        .font(.subheadline)
                     ScrollView {
                         LazyVStack(spacing: 10) {
                             if filteredPages.isEmpty {
@@ -255,8 +300,8 @@ struct ContentView: View {
                                 NoteLibraryRow(page: page, isCurrent: page.id == noteStore.currentPage.id,
                                     onSelect: { selectPage(page) },
                                     onRename: { noteStore.markDirty(page) },
-                                    onStyle: { style in page.paperStyle = style; noteStore.markDirty(page) },
-                                    onExport: { saveCurrentDrawing(); exportPage = page },
+                                    onStyle: { style in page.paperStyle = style; quickPreferences.paperStyle = style; noteStore.markDirty(page) },
+                                    onExport: { saveCurrentDrawing(); exportSheet = ExportSheetRequest(page: page) },
                                     onDuplicate: { duplicatePage(page) },
                                     onDelete: {
                                         saveCurrentDrawing()
@@ -271,8 +316,8 @@ struct ContentView: View {
                             HStack(alignment: .top) {
                                 Image(systemName: "sparkles")
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("노트에 한계를 두지 마세요").font(.subheadline.bold())
-                                    Text("무제한 노트 · 깔끔한 출력 · PDF로 묶기")
+                                    Text("스케치를 자유롭게 꺼내 쓰세요").font(.subheadline.bold())
+                                    Text("무제한 노트 · 투명 PNG · 깔끔한 출력")
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer(minLength: 0)
@@ -308,7 +353,28 @@ struct ContentView: View {
         guard proStore.isPro || noteStore.activePages.count < ProStore.freePageLimit else {
             presentPaywall(.pageLimit); return
         }
+        createPage(style: quickPreferences.paperStyle)
+    }
+
+    private func requestTemplates() {
+        guard proStore.isPro || noteStore.activePages.count < ProStore.freePageLimit else {
+            presentPaywall(.pageLimit); return
+        }
         showTemplates = true
+    }
+
+    private func createPage(style: PaperStyle, fromSheet: Bool = false) {
+        guard proStore.isPro || noteStore.activePages.count < ProStore.freePageLimit else {
+            if fromSheet { pendingPaywall = .pageLimit } else { presentPaywall(.pageLimit) }
+            return
+        }
+        saveCurrentDrawing()
+        rememberViewport()
+        quickPreferences.paperStyle = style
+        isEraserMode = false
+        noteStore.addNewPage(paperStyle: style)
+        loadCurrentDrawing()
+        showSidebar = false
     }
 
     private func requestBatchExport() {
@@ -321,6 +387,7 @@ struct ContentView: View {
             presentPaywall(.pageLimit); return
         }
         saveCurrentDrawing()
+        rememberViewport()
         noteStore.duplicatePage(page)
         loadCurrentDrawing()
         showSidebar = false
@@ -328,6 +395,7 @@ struct ContentView: View {
 
     private func selectPage(_ page: NotePage) {
         saveCurrentDrawing()
+        rememberViewport()
         noteStore.flushNow()
         if let index = noteStore.pages.firstIndex(where: { $0.id == page.id }) {
             noteStore.currentPageIndex = index
@@ -346,7 +414,41 @@ struct ContentView: View {
             canvasView.undoManager?.removeAllActions()
         }
         loadedPageID = page.id
-        if switchedPage { fitPage() }
+        if switchedPage { viewportPageID = nil; prepareViewport() }
+    }
+
+    private func rememberViewport() {
+        guard let id = loadedPageID, viewportPageID == id else { return }
+        savedViewports[id] = CanvasViewport(scale: canvasView.zoomScale, offset: canvasView.contentOffset)
+    }
+
+    private func prepareViewport(size: CGSize? = nil) {
+        let viewport = size ?? canvasView.bounds.size
+        guard viewport.width > 0, viewport.height > 0, let id = loadedPageID, viewportPageID != id else { return }
+        viewportPageID = id
+        if let saved = savedViewports[id] {
+            canvasView.setZoomScale(saved.scale, animated: false)
+            canvasView.setContentOffset(saved.offset, animated: false)
+        } else if canvasView.drawing.strokes.isEmpty {
+            writingSize()
+        } else {
+            fitContent(size: viewport)
+        }
+    }
+
+    private func writingSize() {
+        canvasView.setZoomScale(1, animated: false)
+        canvasView.setContentOffset(.zero, animated: false)
+    }
+
+    private func fitContent(size: CGSize? = nil) {
+        let viewport = size ?? canvasView.bounds.size
+        let bounds = canvasView.drawing.bounds
+        guard !bounds.isNull, !bounds.isEmpty, viewport.width > 0, viewport.height > 0 else { writingSize(); return }
+        let padded = bounds.insetBy(dx: -30, dy: -30)
+        let scale = max(0.05, min(1, viewport.width / padded.width, viewport.height / padded.height))
+        canvasView.setZoomScale(scale, animated: false)
+        canvasView.setContentOffset(CGPoint(x: max(0, padded.minX * scale), y: max(0, padded.minY * scale)), animated: false)
     }
 
     private func fitPage(size: CGSize? = nil) {
@@ -365,6 +467,12 @@ struct ContentView: View {
     }
 
     private func startExport(_ request: ExportRequest) {
+        // Recheck the current entitlement at the action boundary, including restored sheets.
+        if request.format == .png, request.imageOptions.background == .transparent, !proStore.isPro {
+            if let page = request.pages.first { resumeExportSheet = ExportSheetRequest(page: page, options: request.imageOptions) }
+            presentPaywall(.transparentExport)
+            return
+        }
         // Freeze the selected content while a multi-page export yields to the UI.
         let pages = request.pages.map {
             NotePage(id: $0.id, title: $0.title, drawing: $0.drawing,
@@ -387,7 +495,7 @@ struct ContentView: View {
                     }
                 } else {
                     try Task.checkCancellation()
-                    url = try NoteExporter.export(pages: pages, format: request.format, showWatermark: showWatermark)
+                    url = try NoteExporter.export(pages: pages, format: request.format, showWatermark: showWatermark, imageOptions: request.imageOptions)
                 }
                 sharePayload = SharePayload(items: [url])
             } catch is CancellationError {
@@ -417,7 +525,7 @@ struct ContentView: View {
         case "trash": showTrash = true
         case "paywall": presentPaywall(.general)
         case "templates": showTemplates = true
-        case "export": exportPage = noteStore.currentPage
+        case "export": exportSheet = ExportSheetRequest(page: noteStore.currentPage)
         default: break
         }
         #endif

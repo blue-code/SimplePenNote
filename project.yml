@@ -14,8 +14,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    MARKETING_VERSION: "1.1.0"
-    CURRENT_PROJECT_VERSION: 12
+    MARKETING_VERSION: "1.2.0"
+    CURRENT_PROJECT_VERSION: 13
     SWIFT_STRICT_CONCURRENCY: targeted
 
 targets:
@@ -43,8 +43,8 @@ targets:
       properties:
         CFBundleName: SimplePenNote
         CFBundleDisplayName: SimplePenNote
-        CFBundleShortVersionString: "1.1.0"
-        CFBundleVersion: "12"
+        CFBundleShortVersionString: "1.2.0"
+        CFBundleVersion: "13"
         CFBundleIconName: AppIcon
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:

@@ -188,7 +188,7 @@ class NoteStore: ObservableObject {
         loadPendingOperations()
         loadFromLocalCache()
         if pages.filter({ $0.deletedAt == nil }).isEmpty {
-            let first = NotePage(title: "첫 영감", paperStyle: .grid)
+            let first = NotePage(title: "첫 영감", paperStyle: .blank)
             pages.append(first)
             currentPageIndex = pages.count - 1
             enqueueSync(first.id)
@@ -365,7 +365,7 @@ class NoteStore: ObservableObject {
         } else if let index = pages.firstIndex(where: { $0.deletedAt == nil }) {
             currentPageIndex = index
         } else {
-            let fresh = NotePage(title: "첫 영감", paperStyle: .grid)
+            let fresh = NotePage(title: "첫 영감", paperStyle: .blank)
             pages.append(fresh)
             enqueueSync(fresh.id)
             currentPageIndex = pages.count - 1

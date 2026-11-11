@@ -50,6 +50,11 @@ enum DemoData {
             createdAt: Date()
         ))
 
+        if let index = ProcessInfo.processInfo.arguments.firstIndex(of: "-DemoPageCount"),
+           index + 1 < ProcessInfo.processInfo.arguments.count,
+           let count = Int(ProcessInfo.processInfo.arguments[index + 1]), (1...5).contains(count) {
+            return Array(pages.prefix(count))
+        }
         return pages
     }
 

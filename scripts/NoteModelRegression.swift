@@ -47,5 +47,9 @@ extension NoteStore {
 }
 
 @main struct RegressionRunner {
-    @MainActor static func main() throws { try NoteStore.runReliabilityChecks() }
+    @MainActor static func main() throws {
+        _ = NSApplication.shared
+        try NoteStore.runReliabilityChecks()
+        try QuickNoteRegression.run()
+    }
 }

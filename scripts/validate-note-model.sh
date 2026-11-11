@@ -17,7 +17,13 @@ cat > "$app_dir/Contents/Info.plist" <<'PLIST'
 </dict></plist>
 PLIST
 # Compile the exact production model with same-file checks for its private merge logic.
-cat "$repo_dir/SimplePenNote/NoteModel.swift" "$repo_dir/scripts/NoteModelRegression.swift" > "$validation_dir/Combined.swift"
+cat "$repo_dir/SimplePenNote/NoteModel.swift" \
+  "$repo_dir/SimplePenNote/QuickNotePreferences.swift" \
+  "$repo_dir/SimplePenNote/NoteImageLayout.swift" \
+  "$repo_dir/SimplePenNote/PaperBackgroundView.swift" \
+  "$repo_dir/SimplePenNote/NotePNGRenderer.swift" \
+  "$repo_dir/scripts/QuickNoteRegression.swift" \
+  "$repo_dir/scripts/NoteModelRegression.swift" > "$validation_dir/Combined.swift"
 xcrun swiftc -parse-as-library -sdk "$(xcrun --sdk macosx --show-sdk-path)" \
   "$validation_dir/Combined.swift" -o "$app_dir/Contents/MacOS/ModelRegression"
 "$app_dir/Contents/MacOS/ModelRegression"
