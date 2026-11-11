@@ -3,3 +3,5 @@
 • Adjust position and size before inserting, with undo and redo support.
 • Copy or share saved handwriting as transparent PNGs. Available to existing Pro owners.
 • The library is stored on this device. Ink inserted into a note syncs through the existing note sync.
+
+• Optimized for iPhone Duo. Half-fold it to write on top with tools below, or open it like a book to see your notes list beside the page.

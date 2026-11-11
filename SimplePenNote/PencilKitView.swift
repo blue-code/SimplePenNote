@@ -44,6 +44,13 @@ struct PencilKitView: UIViewRepresentable {
             pendingSave?.cancel()
             pendingSave = nil
         }
+
+        /// Runs a debounced save immediately so a stroke isn't lost when the view goes away.
+        func flushPendingSave() {
+            guard let work = pendingSave else { return }
+            pendingSave = nil
+            work.perform()
+        }
     }
     
     func makeUIView(context: Context) -> PKCanvasView {
@@ -72,8 +79,11 @@ struct PencilKitView: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ uiView: PKCanvasView, coordinator: Coordinator) {
-        coordinator.cancelPendingSave()
-        uiView.delegate = nil
+        // The same PKCanvasView is shared across layouts (e.g. folding an iPhone Duo moves the
+        // canvas into another pane). SwiftUI may build the new representable before tearing
+        // down the old one, so only detach if no newer coordinator has taken over.
+        coordinator.flushPendingSave()
+        if uiView.delegate === coordinator { uiView.delegate = nil }
     }
     
     private func updateTool() {

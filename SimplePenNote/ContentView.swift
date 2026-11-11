@@ -105,20 +105,9 @@ struct ContentView: View {
 
     private var mainContent: some View {
         GeometryReader { proxy in
-            canvasContent
-                .onChange(of: proxy.size, initial: true) { _, size in
-                    prepareViewport(size: size)
-                }
+            adaptiveLayout(posture: FoldPosture(proxy: proxy), size: proxy.size)
         }
-        .safeAreaInset(edge: .top, spacing: 0) { canvasHeader.disabled(isSelecting || placingSnippet != nil) }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if isSelecting { selectionToolbar }
-            else if placingSnippet != nil { placementToolbar }
-            else { drawingToolbar }
-        }
-        .overlay(alignment: .trailing) {
-            if showSidebar { sidebarView.transition(.move(edge: .trailing)) }
-        }
+        .background(Color(.systemBackground))
         .animation(.easeInOut(duration: 0.2), value: showSidebar)
         .sheet(item: $sharePayload) { ActivityViewController(activityItems: $0.items) }
         .sheet(isPresented: $showTrash) { TrashView(noteStore: noteStore) }
@@ -190,6 +179,84 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Adaptive layout (iPhone Duo / regular width)
+
+    /// Width from which the note library sits beside the canvas instead of covering it
+    /// (iPhone Duo inner display, iPad).
+    private static let dockedLibraryMinWidth: CGFloat = 700
+    private static let dockedLibraryWidth: CGFloat = 340
+
+    @ViewBuilder
+    private func adaptiveLayout(posture: FoldPosture, size: CGSize) -> some View {
+        switch posture {
+        case .tabletop(let fold):
+            // Write on the upper half; every control moves below the fold so the hand
+            // never reaches across the hinge.
+            VStack(spacing: 0) {
+                canvasArea
+                    .frame(height: fold.minY)
+                    .clipped()
+                Color.clear.frame(height: fold.height)
+                VStack(spacing: 0) {
+                    canvasHeader(showsLibraryToggle: true).disabled(isSelecting || placingSnippet != nil)
+                    Spacer(minLength: 0)
+                    bottomControls(expandPenOptions: true)
+                }
+                .frame(maxHeight: .infinity)
+            }
+            .overlay(alignment: .trailing) {
+                if showSidebar { sidebarView.transition(.move(edge: .trailing)) }
+            }
+        case .book(let fold):
+            // Library on one page, the note on the other; nothing straddles the fold.
+            HStack(spacing: 0) {
+                libraryPanel(closable: false)
+                    .frame(width: fold.minX)
+                Color.clear.frame(width: fold.width)
+                editorColumn(showsLibraryToggle: false)
+            }
+        case .flat where size.width >= Self.dockedLibraryMinWidth:
+            HStack(spacing: 0) {
+                editorColumn(showsLibraryToggle: true)
+                if showSidebar {
+                    Divider()
+                    libraryPanel(closable: true)
+                        .frame(width: Self.dockedLibraryWidth)
+                        .transition(.move(edge: .trailing))
+                }
+            }
+        case .flat:
+            editorColumn(showsLibraryToggle: true)
+                .overlay(alignment: .trailing) {
+                    if showSidebar { sidebarView.transition(.move(edge: .trailing)) }
+                }
+        }
+    }
+
+    private func editorColumn(showsLibraryToggle: Bool) -> some View {
+        canvasArea
+            .safeAreaInset(edge: .top, spacing: 0) {
+                canvasHeader(showsLibraryToggle: showsLibraryToggle).disabled(isSelecting || placingSnippet != nil)
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) { bottomControls(expandPenOptions: false) }
+    }
+
+    private var canvasArea: some View {
+        GeometryReader { proxy in
+            canvasContent
+                .onChange(of: proxy.size, initial: true) { _, size in
+                    prepareViewport(size: size)
+                }
+        }
+    }
+
+    @ViewBuilder
+    private func bottomControls(expandPenOptions: Bool) -> some View {
+        if isSelecting { selectionToolbar }
+        else if placingSnippet != nil { placementToolbar }
+        else { drawingToolbar(expandPenOptions: expandPenOptions) }
+    }
+
     private var canvasContent: some View {
         ZStack {
             ZoomableCanvasContainer(canvasView: $canvasView, paperStyle: noteStore.currentPage.paperStyle)
@@ -218,11 +285,13 @@ struct ContentView: View {
         }
     }
 
-    private var canvasHeader: some View {
+    private func canvasHeader(showsLibraryToggle: Bool) -> some View {
         HStack(spacing: 14) {
-            Button { saveCurrentDrawing(); showSidebar.toggle() } label: {
-                Image(systemName: "sidebar.right")
-            }.accessibilityLabel("나의 노트 열기")
+            if showsLibraryToggle {
+                Button { saveCurrentDrawing(); showSidebar.toggle() } label: {
+                    Image(systemName: "sidebar.right")
+                }.accessibilityLabel(showSidebar ? "나의 노트 닫기" : "나의 노트 열기")
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(noteStore.currentPage.title.isEmpty ? "제목 없는 노트" : noteStore.currentPage.title)
                     .font(.headline).lineLimit(1)
@@ -244,9 +313,9 @@ struct ContentView: View {
         .background(.regularMaterial)
     }
 
-    private var drawingToolbar: some View {
+    private func drawingToolbar(expandPenOptions: Bool) -> some View {
         VStack(spacing: 8) {
-            if showPenOptions {
+            if showPenOptions || expandPenOptions {
                 HStack(spacing: 4) {
                     ForEach(NotePenColor.allCases) { pen in
                         Button { quickPreferences.penColor = pen; isEraserMode = false } label: {
@@ -298,10 +367,12 @@ struct ContentView: View {
                 } label: {
                     Image(systemName: "viewfinder").frame(maxWidth: .infinity, minHeight: 44)
                 }.accessibilityLabel("보기 크기 선택")
-                Button { withAnimation(.easeInOut(duration: 0.15)) { showPenOptions.toggle() } } label: {
-                    Image(systemName: showPenOptions ? "chevron.down" : "slider.horizontal.3")
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }.accessibilityLabel(showPenOptions ? "펜 설정 접기" : "펜 설정 펼치기")
+                if !expandPenOptions {
+                    Button { withAnimation(.easeInOut(duration: 0.15)) { showPenOptions.toggle() } } label: {
+                        Image(systemName: showPenOptions ? "chevron.down" : "slider.horizontal.3")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }.accessibilityLabel(showPenOptions ? "펜 설정 접기" : "펜 설정 펼치기")
+                }
             }
         }
         .font(.title3)
@@ -424,82 +495,91 @@ struct ContentView: View {
         GeometryReader { proxy in
             ZStack(alignment: .trailing) {
                 Color.black.opacity(0.2).onTapGesture { showSidebar = false }
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        Text("나의 노트").font(.title2.bold())
-                        Spacer()
-                        Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                            .accessibilityLabel("설정")
-                        Button { showSidebar = false } label: { Image(systemName: "xmark") }
-                            .accessibilityLabel("노트 목록 닫기")
-                    }
-                    HStack {
-                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                        TextField("노트 제목 검색", text: $searchText)
-                    }.padding(10).background(Color.gray.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
-                    Button { requestNewPage() } label: {
-                        HStack {
-                            Label("새 노트 만들기", systemImage: "plus")
-                            Spacer()
-                            Text(proStore.isPro ? "Pro" : "\(noteStore.activePages.count) / \(ProStore.freePageLimit)")
-                                .font(.caption.bold())
-                        }.padding(14).background(Color.indigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-                    }
-                    Button("종이를 골라 새 노트", systemImage: "square.grid.2x2") { requestTemplates() }
-                        .font(.subheadline)
-                    Button("손글씨 보관함", systemImage: "square.stack.3d.up") {
-                        saveCurrentDrawing()
-                        showSidebar = false
-                        showSnippets = true
-                    }.font(.subheadline).accessibilityIdentifier("snippets.open")
-                    ScrollView {
-                        LazyVStack(spacing: 10) {
-                            if filteredPages.isEmpty {
-                                Text("검색 결과가 없습니다").foregroundStyle(.secondary).padding(.vertical, 24)
-                            }
-                            ForEach(filteredPages) { page in
-                                NoteLibraryRow(page: page, isCurrent: page.id == noteStore.currentPage.id,
-                                    onSelect: { selectPage(page) },
-                                    onRename: { noteStore.markDirty(page) },
-                                    onStyle: { style in page.paperStyle = style; quickPreferences.paperStyle = style; noteStore.markDirty(page) },
-                                    onExport: { saveCurrentDrawing(); exportSheet = ExportSheetRequest(page: page) },
-                                    onDuplicate: { duplicatePage(page) },
-                                    onDelete: {
-                                        saveCurrentDrawing()
-                                        noteStore.softDelete(page)
-                                        loadCurrentDrawing()
-                                    })
-                            }
-                        }
-                    }
-                    if !proStore.isPro {
-                        Button { presentPaywall(.general) } label: {
-                            HStack(alignment: .top) {
-                                Image(systemName: "sparkles")
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("스케치를 자유롭게 꺼내 쓰세요").font(.subheadline.bold())
-                                    Text("무제한 노트 · 투명 PNG · 손글씨 보관함")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer(minLength: 0)
-                                Image(systemName: "chevron.right").font(.caption)
-                            }.padding(14).background(Color.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-                        }.buttonStyle(.plain)
-                    }
-                    HStack {
-                        Button { saveCurrentDrawing(); requestBatchExport() } label: {
-                            Label("PDF로 묶기", systemImage: "doc.on.doc")
-                        }
-                        Spacer()
-                        Button { showTrash = true } label: { Image(systemName: "trash") }
-                            .accessibilityLabel("휴지통")
-                    }.font(.subheadline).padding(.vertical, 4)
-                }
-                .padding(20)
-                .frame(width: min(380, proxy.size.width), height: proxy.size.height)
-                .background(.regularMaterial)
+                libraryPanel(closable: true)
+                    .frame(width: min(380, proxy.size.width), height: proxy.size.height)
             }
         }
+    }
+
+    /// The note library. Shown as an overlay on narrow screens and beside the canvas on
+    /// wide or book-folded screens, where `closable` is false because it is always visible.
+    private func libraryPanel(closable: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("나의 노트").font(.title2.bold())
+                Spacer()
+                Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                    .accessibilityLabel("설정")
+                if closable {
+                    Button { showSidebar = false } label: { Image(systemName: "xmark") }
+                        .accessibilityLabel("노트 목록 닫기")
+                }
+            }
+            HStack {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("노트 제목 검색", text: $searchText)
+            }.padding(10).background(Color.gray.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+            Button { requestNewPage() } label: {
+                HStack {
+                    Label("새 노트 만들기", systemImage: "plus")
+                    Spacer()
+                    Text(proStore.isPro ? "Pro" : "\(noteStore.activePages.count) / \(ProStore.freePageLimit)")
+                        .font(.caption.bold())
+                }.padding(14).background(Color.indigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+            }
+            Button("종이를 골라 새 노트", systemImage: "square.grid.2x2") { requestTemplates() }
+                .font(.subheadline)
+            Button("손글씨 보관함", systemImage: "square.stack.3d.up") {
+                saveCurrentDrawing()
+                showSidebar = false
+                showSnippets = true
+            }.font(.subheadline).accessibilityIdentifier("snippets.open")
+            ScrollView {
+                LazyVStack(spacing: 10) {
+                    if filteredPages.isEmpty {
+                        Text("검색 결과가 없습니다").foregroundStyle(.secondary).padding(.vertical, 24)
+                    }
+                    ForEach(filteredPages) { page in
+                        NoteLibraryRow(page: page, isCurrent: page.id == noteStore.currentPage.id,
+                            onSelect: { selectPage(page) },
+                            onRename: { noteStore.markDirty(page) },
+                            onStyle: { style in page.paperStyle = style; quickPreferences.paperStyle = style; noteStore.markDirty(page) },
+                            onExport: { saveCurrentDrawing(); exportSheet = ExportSheetRequest(page: page) },
+                            onDuplicate: { duplicatePage(page) },
+                            onDelete: {
+                                saveCurrentDrawing()
+                                noteStore.softDelete(page)
+                                loadCurrentDrawing()
+                            })
+                    }
+                }
+            }
+            if !proStore.isPro {
+                Button { presentPaywall(.general) } label: {
+                    HStack(alignment: .top) {
+                        Image(systemName: "sparkles")
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("스케치를 자유롭게 꺼내 쓰세요").font(.subheadline.bold())
+                            Text("무제한 노트 · 투명 PNG · 손글씨 보관함")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.caption)
+                    }.padding(14).background(Color.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                }.buttonStyle(.plain)
+            }
+            HStack {
+                Button { saveCurrentDrawing(); requestBatchExport() } label: {
+                    Label("PDF로 묶기", systemImage: "doc.on.doc")
+                }
+                Spacer()
+                Button { showTrash = true } label: { Image(systemName: "trash") }
+                    .accessibilityLabel("휴지통")
+            }.font(.subheadline).padding(.vertical, 4)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(.regularMaterial)
     }
 
     private var filteredPages: [NotePage] {
