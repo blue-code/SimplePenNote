@@ -195,6 +195,37 @@ platform :ios do
     )
   end
 
+  desc "현재 MARKETING_VERSION 의 App Store 버전에 메타데이터 + 스크린샷 업로드 (바이너리·심사 제출 없음)"
+  lane :store_metadata do
+    api_key = app_store_connect_api_key(
+      key_id: API_KEY_ID,
+      issuer_id: API_ISSUER_ID,
+      key_filepath: API_KEY_PATH,
+      duration: 1200,
+      in_house: false
+    )
+    spec = YAML.load_file(File.expand_path("../project.yml", __dir__))
+    version = spec.fetch("settings").fetch("base").fetch("MARKETING_VERSION").to_s
+
+    deliver(
+      api_key: api_key,
+      app_identifier: "com.blueCode.SimplePenNote",
+      app_version: version,          # creates the version draft if it doesn't exist yet
+      skip_app_version_update: false,
+      skip_binary_upload: true,
+      skip_metadata: false,
+      skip_screenshots: false,
+      overwrite_screenshots: true,
+      metadata_path: "./fastlane/metadata",
+      screenshots_path: "./fastlane/screenshots",
+      submit_for_review: false,
+      automatic_release: false,
+      force: true,
+      run_precheck_before_submit: false,
+      precheck_include_in_app_purchases: false
+    )
+  end
+
   desc "현재 버전/빌드의 TestFlight 처리 상태 조회 (업로드 없음)"
   lane :beta_status do
     app_store_connect_api_key(

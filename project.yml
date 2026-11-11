@@ -17,7 +17,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "1.3.0"
-    CURRENT_PROJECT_VERSION: 15
+    CURRENT_PROJECT_VERSION: 17
     SWIFT_STRICT_CONCURRENCY: targeted
     LOCALIZATION_PREFERS_STRING_CATALOGS: YES
     SWIFT_EMIT_LOC_STRINGS: YES
@@ -48,7 +48,7 @@ targets:
         CFBundleName: SimplePenNote
         CFBundleDisplayName: SimplePenNote
         CFBundleShortVersionString: "1.3.0"
-        CFBundleVersion: "15"
+        CFBundleVersion: "17"
         CFBundleIconName: AppIcon
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
