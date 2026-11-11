@@ -67,7 +67,7 @@ enum InkSelection {
     static func hasInk(_ drawing: PKDrawing, in rect: CGRect) -> Bool {
         guard !drawing.strokes.isEmpty, let selection = NoteSelection(rect: rect) else { return false }
         let scale = min(1, 128 / max(selection.width, selection.height))
-        let rendered = drawing.image(from: rect, scale: scale)
+        let rendered = drawing.lightImage(from: rect, scale: scale)
         #if canImport(UIKit)
         let image = rendered.cgImage
         #else
@@ -87,3 +87,29 @@ enum InkSelection {
         }
     }
 }
+
+extension PKDrawing {
+    /// Renders ink exactly as written. `image(from:scale:)` follows the current appearance, so in
+    /// Dark Mode PencilKit turns dark ink light — exported PNGs and PDFs would lose black writing
+    /// on paper. Exports and previews are always on light paper, so render in the light style.
+    func lightImage(from rect: CGRect, scale: CGFloat) -> PlatformImage {
+        #if canImport(UIKit)
+        var image = PlatformImage()
+        UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
+            image = self.image(from: rect, scale: scale)
+        }
+        return image
+        #else
+        let appearance = NSAppearance(named: .aqua) ?? NSAppearance.currentDrawing()
+        var image = PlatformImage()
+        appearance.performAsCurrentDrawingAppearance { image = self.image(from: rect, scale: scale) }
+        return image
+        #endif
+    }
+}
+
+#if canImport(UIKit)
+typealias PlatformImage = UIImage
+#else
+typealias PlatformImage = NSImage
+#endif

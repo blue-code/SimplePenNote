@@ -227,6 +227,8 @@ struct ContentView: View {
             }
         case .flat:
             editorColumn(showsLibraryToggle: true)
+                // While the library covers the canvas, keep VoiceOver from reaching the controls behind it.
+                .accessibilityHidden(showSidebar)
                 .overlay(alignment: .trailing) {
                     if showSidebar { sidebarView.transition(.move(edge: .trailing)) }
                 }

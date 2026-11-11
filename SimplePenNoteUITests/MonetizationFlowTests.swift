@@ -8,7 +8,8 @@ final class MonetizationFlowTests: XCTestCase {
 
     func testPageLimitExplainsUpgradeAndAllowsDismissal() {
         let app = launch(screen: "sidebar")
-        let newNote = button(containing: "새 노트 만들기", in: app)
+        // The library's row ("새 노트 만들기, 5 / 5"), not the header's "바로 새 노트 만들기".
+        let newNote = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "새 노트 만들기")).firstMatch
         XCTAssertTrue(newNote.waitForExistence(timeout: 10))
         newNote.tap()
 

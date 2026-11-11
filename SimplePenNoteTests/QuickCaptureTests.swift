@@ -33,6 +33,27 @@ final class QuickCaptureTests: XCTestCase {
         XCTAssertEqual(empty.outputSize, CGSize(width: 1500, height: 2500))
     }
 
+    func testDarkModeExportKeepsBlackInkDark() throws {
+        let points = (0...10).map { index in
+            PKStrokePoint(location: CGPoint(x: 100 + CGFloat(index) * 30, y: 300), timeOffset: Double(index) * 0.01,
+                          size: CGSize(width: 30, height: 30), opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)
+        }
+        let drawing = PKDrawing(strokes: [PKStroke(ink: PKInk(.pen, color: .black), path: PKStrokePath(controlPoints: points, creationDate: Date()))])
+        let page = NotePage(drawing: drawing, paperStyle: .blank)
+        for background in [NoteImageExportOptions.Background.paper, .transparent] {
+            var rendered: CGImage?
+            // Users export while the system is in Dark Mode; the ink must not be inverted.
+            UITraitCollection(userInterfaceStyle: .dark).performAsCurrent {
+                rendered = try? NotePNGRenderer.render(page: page, options: .init(area: .content, background: background),
+                                                       showWatermark: false)
+            }
+            let image = try XCTUnwrap(rendered)
+            let center = try pixel(image, x: image.width / 2, y: image.height / 2)
+            XCTAssertGreaterThan(center[3], 200, "\(background): ink is opaque")
+            XCTAssertLessThan(Int(center[0]) + Int(center[1]) + Int(center[2]), 150, "\(background): black ink stays dark")
+        }
+    }
+
     func testTransparentPNGPreservesAlphaAndInkThroughEncoding() throws {
         let points = (0...10).map { index in
             PKStrokePoint(location: CGPoint(x: -40 + CGFloat(index) * 30, y: 5100), timeOffset: Double(index) * 0.01,

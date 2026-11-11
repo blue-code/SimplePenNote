@@ -41,7 +41,7 @@ enum NotePNGRenderer {
             guard let paper = renderer.cgImage else { throw NoteExportError.renderingFailed }
             context.draw(paper, in: destination)
         }
-        let inkImage = page.drawing.image(from: layout.sourceRect, scale: layout.scale)
+        let inkImage = page.drawing.lightImage(from: layout.sourceRect, scale: layout.scale)
         #if canImport(UIKit)
         let ink = inkImage.cgImage
         #else

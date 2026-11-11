@@ -138,7 +138,7 @@ enum NoteExporter {
     }
 
     private static func drawingImage(for page: NotePage) -> UIImage {
-        page.drawing.image(from: CGRect(origin: .zero, size: canvasSize),
+        page.drawing.lightImage(from: CGRect(origin: .zero, size: canvasSize),
                            scale: outputSize.width / canvasSize.width)
     }
 
