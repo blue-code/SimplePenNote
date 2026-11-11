@@ -67,7 +67,7 @@ scripts/validate-note-model.sh
 
 검증: `scripts/validate-note-model.sh`로 실제 저장 모델과 공용 PNG 렌더러를 실행했습니다. 필기 위치·종이 좌표·자른 종이 선 정렬, 투명도와 PNG 인코딩 후 보존, 종이 밖 필기, 빈 노트, 이미지 크기 제한, 워터마크 여백, 펜·종이 설정 복원 검증이 통과했습니다. `/tmp/SimplePenNote-QuickCapture-QA`의 PNG 결과를 시각적으로 확인했습니다.
 
-새 XCTest는 설정 복원·자르기·투명 PNG를, UI 테스트는 즉시 생성과 투명 기능 안내 후 설정 복귀를 추가합니다. 총 27개 테스트의 빌드를 확인합니다. 이번 iOS 실행 시도는 테스트 러너 설치·실행 단계에서 시뮬레이터 `NSMachErrorDomain -308 (server died)`로 실패했으며 테스트 본문 실행을 확인하지 못했습니다. macOS 렌더러 검증이 iOS UI, Apple Pencil, Sandbox 결제 검증을 대신하지는 않습니다.
+새 XCTest는 설정 복원·자르기·투명 PNG를, UI 테스트는 즉시 생성과 투명 기능 안내 후 설정 복귀를 추가합니다. 총 27개 테스트의 빌드와 실기기용 Release 빌드가 통과했습니다. 이번 iOS 실행 시도는 테스트 러너 설치·실행 단계에서 시뮬레이터 `NSMachErrorDomain -308 (server died)`로 실패했으며 테스트 본문 실행을 확인하지 못했습니다. macOS 렌더러 검증이 iOS UI, Apple Pencil, Sandbox 결제 검증을 대신하지는 않습니다.
 
 ## 출시 후 측정
 
@@ -77,7 +77,7 @@ scripts/validate-note-model.sh
 
 ## TestFlight 배포
 
-- 이전 배포: 1.1.0 (12), 내부 TestFlight 사용 가능. 이번 변경은 1.2.0 후보이며 배포 결과는 `docs/releases/1.2.0-13.md`에 기록합니다.
+- 이전 배포: 1.1.0 (12), 내부 TestFlight 사용 가능. 이번 배포 1.2.0 (13)도 `VALID` / `IN_BETA_TESTING`으로 설치 가능합니다. 배포 결과는 `docs/releases/1.2.0-13.md`에 기록했습니다.
 - 기존 내부 그룹 `내부`는 모든 빌드 접근 권한을 갖고 있습니다. 외부 테스터 초대나 App Store 심사 제출은 수행하지 않습니다.
 - `fastlane ios beta`는 API로 최신 빌드를 조회하고 `project.yml`에 빌드 번호를 반영한 뒤, 기존 유효 프로비저닝 프로파일로 아카이브·업로드하고 Apple 처리를 기다립니다. 조회 실패 시 임의의 번호로 진행하지 않습니다.
 - API 키는 기본적으로 `fastlane/AuthKey_33P5W93GJQ.p8`에서 읽고 `ASC_KEY_PATH`로 재정의할 수 있습니다. 키 파일은 Git에서 제외됩니다.
