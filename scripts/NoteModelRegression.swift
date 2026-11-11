@@ -51,5 +51,6 @@ extension NoteStore {
         _ = NSApplication.shared
         try NoteStore.runReliabilityChecks()
         try QuickNoteRegression.run()
+        try InkSnippetRegression.run()
     }
 }

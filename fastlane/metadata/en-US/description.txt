@@ -17,8 +17,8 @@ Accidentally deleted notes are recoverable for 30 days.
 -- Silent iCloud sync
 Notes sync across your iPhone and iPad signed in with the same Apple ID. No third-party servers — notes live only in your private iCloud.
 
--- PNG / PDF export
-Preview PNG images and automatically crop unused space around your handwriting for free. PDFs preserve the whole paper. Free exports include a watermark.
+-- Select and export
+Select a rectangle around the handwriting you need, or automatically crop unused space. Preview and share PNGs with paper for free. PDFs preserve the whole paper. Free exports include a watermark.
 
 -- Find and reuse notes
 Search by title, duplicate notes, and choose pen colors and widths.
@@ -30,11 +30,14 @@ SimplePenNote Pro (optional)
 Use up to 5 pages free. To unlock unlimited pages and watermark-free export, buy Pro once — no subscription.
 
 · Unlimited pages
+· A personal handwriting library: save, position, resize, and insert handwriting into other notes
 · Share or copy transparent PNG sketches for use in other apps
 · Watermark-free PNG / PDF export
 · Combine selected notes into one PDF
 · One-time purchase, lifetime access
 · Works on all your devices with the same Apple ID
+
+The handwriting library is stored on this device. Ink inserted into a note syncs with that note through iCloud.
 
 --------------------
 

@@ -126,6 +126,8 @@ class CanvasSyncObject: ObservableObject {
     private var cancellable: Any?
     
     init(canvasView: PKCanvasView) {
+        contentOffset = canvasView.contentOffset
+        zoomScale = canvasView.zoomScale
         // PKCanvasView는 UIScrollView를 상속하므로 델리게이트나 타이머로 감시 가능
         // 심플하게 매 프레임 업데이트되는 타이머로 위치 동기화 (가장 확실한 방법)
         cancellable = Timer.publish(every: 0.016, on: .main, in: .common)

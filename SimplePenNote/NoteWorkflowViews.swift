@@ -118,6 +118,7 @@ extension PaperStyle {
 struct ExportOptionsView: View {
     @ObservedObject var page: NotePage
     @ObservedObject var proStore: ProStore
+    let onSaveSnippet: (String, NoteImageExportOptions) throws -> Void
     let onExport: (NoteExportFormat, NoteImageExportOptions) -> Void
     let onUpgrade: (PaywallContext, NoteImageExportOptions) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -125,12 +126,17 @@ struct ExportOptionsView: View {
     @State private var preview: UIImage?
     @State private var previewError: String?
     @State private var copyStatus: String?
+    @State private var showSaveSnippet = false
+    @State private var snippetTitle = ""
+    @State private var snippetStatus: String?
 
     init(page: NotePage, proStore: ProStore, initialOptions: NoteImageExportOptions = .init(),
+         onSaveSnippet: @escaping (String, NoteImageExportOptions) throws -> Void,
          onExport: @escaping (NoteExportFormat, NoteImageExportOptions) -> Void,
          onUpgrade: @escaping (PaywallContext, NoteImageExportOptions) -> Void) {
         self.page = page
         self.proStore = proStore
+        self.onSaveSnippet = onSaveSnippet
         self.onExport = onExport
         self.onUpgrade = onUpgrade
         _options = State(initialValue: initialOptions)
@@ -162,10 +168,15 @@ struct ExportOptionsView: View {
                     }
                     .frame(height: 150).clipShape(RoundedRectangle(cornerRadius: 10))
                     .accessibilityLabel(options.background == .transparent ? "투명 배경 PNG 미리보기" : "종이 배경 PNG 미리보기")
-                    Toggle("필기 주변 여백 자동 제거", isOn: Binding(
-                        get: { options.area == .content },
-                        set: { options.area = $0 ? .content : .page }))
-                        .accessibilityIdentifier("export.crop")
+                    if options.selection != nil {
+                        Label("선택한 부분만 이미지로 내보냅니다", systemImage: "rectangle.dashed")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Toggle("필기 주변 여백 자동 제거", isOn: Binding(
+                            get: { options.area == .content },
+                            set: { options.area = $0 ? .content : .page }))
+                            .accessibilityIdentifier("export.crop")
+                    }
                     Toggle(isOn: Binding(get: { options.background == .transparent },
                                          set: { options.background = $0 ? .transparent : .paper })) {
                         HStack {
@@ -197,11 +208,29 @@ struct ExportOptionsView: View {
                         Text(copyStatus).font(.caption).foregroundStyle(.secondary)
                             .accessibilityIdentifier("export.copyStatus")
                     }
-                    Button { onExport(.pdf, .fullPage) } label: {
-                        Label("PDF 문서로 공유", systemImage: "doc.richtext")
+                    if options.selection == nil {
+                        Button { onExport(.pdf, .fullPage) } label: {
+                            Label("PDF 문서로 공유", systemImage: "doc.richtext")
+                        }
+                        Text("PDF는 종이 전체를 한 페이지로 저장합니다.")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
-                    Text("PDF는 종이 전체를 한 페이지로 저장합니다.")
+                }
+                Section("다음에도 꺼내 쓰기") {
+                    Button {
+                        guard proStore.isPro else { onUpgrade(.snippetLibrary, options); return }
+                        snippetTitle = page.title
+                        showSaveSnippet = true
+                    } label: {
+                        HStack {
+                            Label("손글씨 보관함에 저장", systemImage: "square.stack.3d.up")
+                            if !proStore.isPro { Text("Pro").font(.caption.bold()) }
+                        }
+                    }.disabled(page.drawing.strokes.isEmpty)
+                        .accessibilityIdentifier("export.saveSnippet")
+                    Text("저장한 손글씨는 다른 노트에 다시 넣거나 투명 PNG로 복사할 수 있습니다. 보관함은 이 기기에 저장됩니다.")
                         .font(.caption).foregroundStyle(.secondary)
+                    if let snippetStatus { Text(snippetStatus).font(.caption).accessibilityIdentifier("export.snippetStatus") }
                 }
                 if !proStore.isPro {
                     Section {
@@ -215,9 +244,17 @@ struct ExportOptionsView: View {
                     }
                 }
             }
-            .navigationTitle("내보내기")
+            .navigationTitle(options.selection == nil ? "내보내기" : "선택 영역 내보내기")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("닫기") { dismiss() } } }
+            .alert("손글씨 보관함에 저장", isPresented: $showSaveSnippet) {
+                TextField("손글씨 이름", text: $snippetTitle)
+                Button("저장") {
+                    do { try onSaveSnippet(snippetTitle, options); snippetStatus = "보관함에 저장했습니다. 노트 목록에서 손글씨 보관함을 열어 다시 사용할 수 있습니다." }
+                    catch { snippetStatus = error.localizedDescription }
+                }
+                Button("취소", role: .cancel) {}
+            }
             .task(id: PreviewKey(options: options, isPro: proStore.isPro)) {
                 do {
                     preview = try autoreleasepool {
@@ -258,7 +295,7 @@ struct ExportOptionsView: View {
     }
 }
 
-private struct TransparencyGrid: View {
+struct TransparencyGrid: View {
     var body: some View {
         Canvas { context, size in
             context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.white))

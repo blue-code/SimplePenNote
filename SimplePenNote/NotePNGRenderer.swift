@@ -11,8 +11,9 @@ import AppKit
 @MainActor
 enum NotePNGRenderer {
     static func render(page: NotePage, options: NoteImageExportOptions,
-                       showWatermark: Bool) throws -> CGImage {
-        let layout = NoteImageLayout(drawingBounds: page.drawing.bounds, options: options, showWatermark: showWatermark)
+                       showWatermark: Bool, maximumDimension: CGFloat = 2500) throws -> CGImage {
+        let layout = NoteImageLayout(drawingBounds: page.drawing.bounds, options: options, showWatermark: showWatermark,
+                                     maximumDimension: maximumDimension)
         let width = Int(layout.outputSize.width)
         let height = Int(layout.outputSize.height)
         guard let context = CGContext(data: nil, width: width, height: height,

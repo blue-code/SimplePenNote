@@ -14,6 +14,24 @@ struct ContentView: View {
         return true
         #endif
     }())
+    @StateObject private var snippetStore = InkSnippetStore(persistChanges: {
+        #if DEBUG
+        return !DemoData.isEnabled
+        #else
+        return true
+        #endif
+    }())
+    @State private var isSelecting = false
+    @State private var inkSelection: NoteSelection?
+    @State private var selectionHasInk = false
+    @State private var showSnippets = false
+    @State private var returnToSnippets = false
+    @State private var pendingSnippet: InkSnippet?
+    @State private var placingSnippet: InkSnippet?
+    @State private var placementCenter = CGPoint.zero
+    @State private var placementBaseScale: CGFloat = 1
+    @State private var placementMultiplier: CGFloat = 1
+    @State private var placementPreview: UIImage?
     @State private var showPenOptions = false
     @State private var viewportPageID: UUID?
     @State private var savedViewports: [UUID: CanvasViewport] = [:]
@@ -92,8 +110,12 @@ struct ContentView: View {
                     prepareViewport(size: size)
                 }
         }
-        .safeAreaInset(edge: .top, spacing: 0) { canvasHeader }
-        .safeAreaInset(edge: .bottom, spacing: 0) { drawingToolbar }
+        .safeAreaInset(edge: .top, spacing: 0) { canvasHeader.disabled(isSelecting || placingSnippet != nil) }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if isSelecting { selectionToolbar }
+            else if placingSnippet != nil { placementToolbar }
+            else { drawingToolbar }
+        }
         .overlay(alignment: .trailing) {
             if showSidebar { sidebarView.transition(.move(edge: .trailing)) }
         }
@@ -109,19 +131,35 @@ struct ContentView: View {
             if let request = resumeExportSheet {
                 resumeExportSheet = nil
                 exportSheet = request
+            } else if returnToSnippets {
+                returnToSnippets = false
+                showSnippets = true
             }
         }) { PaywallView(proStore: proStore, context: $0) }
         .sheet(isPresented: $showTemplates, onDismiss: finishSheet) {
             TemplatePickerView { style in createPage(style: style, fromSheet: true) }
         }
         .sheet(item: $exportSheet, onDismiss: finishSheet) { request in
-            ExportOptionsView(page: request.page, proStore: proStore, initialOptions: request.options) { format, options in
+            ExportOptionsView(page: request.page, proStore: proStore, initialOptions: request.options, onSaveSnippet: { title, options in
+                try saveSnippet(title: title, options: options, page: request.page)
+            }) { format, options in
                 pendingExport = ExportRequest(pages: [request.page], format: format, imageOptions: options)
                 exportSheet = nil
             } onUpgrade: { context, options in
                 resumeExportSheet = ExportSheetRequest(page: request.page, options: options)
                 pendingPaywall = context
                 exportSheet = nil
+            }
+        }
+        .sheet(isPresented: $showSnippets, onDismiss: finishSheet) {
+            InkSnippetLibraryView(store: snippetStore, proStore: proStore) { item in
+                guard proStore.isPro else { returnToSnippets = true; pendingPaywall = .snippetLibrary; showSnippets = false; return }
+                pendingSnippet = item
+                showSnippets = false
+            } onUpgrade: {
+                returnToSnippets = true
+                pendingPaywall = .snippetLibrary
+                showSnippets = false
             }
         }
         .sheet(isPresented: $showBatchExport, onDismiss: finishSheet) {
@@ -131,7 +169,7 @@ struct ContentView: View {
                 pendingExport = ExportRequest(pages: pages, format: .pdf)
             }
         }
-        .alert("내보내기 실패", isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })) {
+        .alert("작업을 완료하지 못했습니다", isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })) {
             Button("확인", role: .cancel) {}
         } message: { Text(exportError ?? "") }
         .onAppear {
@@ -169,6 +207,14 @@ struct ContentView: View {
                     noteStore.savePages()
                 }
             )
+            .allowsHitTesting(!isSelecting && placingSnippet == nil)
+            if isSelecting {
+                InkSelectionOverlay(canvasView: canvasView, selection: $inkSelection) { validateSelection() }
+            }
+            if let item = placingSnippet {
+                InkPlacementOverlay(item: item, preview: placementPreview, center: $placementCenter,
+                                    scale: placementBaseScale * placementMultiplier, canvasView: canvasView)
+            }
         }
     }
 
@@ -187,6 +233,8 @@ struct ContentView: View {
             Button { requestNewPage() } label: { Image(systemName: "plus.square") }
                 .accessibilityLabel("바로 새 노트 만들기")
                 .contextMenu { Button("종이를 골라 새 노트", systemImage: "square.grid.2x2") { requestTemplates() } }
+            Button(action: beginSelection) { Image(systemName: "rectangle.dashed") }
+                .accessibilityLabel("필기 부분 선택")
             Button { saveCurrentDrawing(); exportSheet = ExportSheetRequest(page: noteStore.currentPage) } label: {
                 Image(systemName: "square.and.arrow.up")
             }.accessibilityLabel("현재 노트 내보내기")
@@ -264,6 +312,114 @@ struct ContentView: View {
         .background(.regularMaterial)
     }
 
+    private var selectionToolbar: some View {
+        VStack(spacing: 10) {
+            Text("필요한 부분을 사각형으로 드래그하세요")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button("취소") { isSelecting = false; inkSelection = nil }
+                Spacer()
+                Button("전체 필기 선택") {
+                    inkSelection = NoteSelection(rect: canvasView.drawing.bounds.insetBy(dx: -12, dy: -12))
+                    validateSelection()
+                }.font(.subheadline)
+                Spacer()
+                Button("미리보기", action: previewSelection)
+                    .font(.subheadline.bold()).disabled(!selectionHasInk || inkSelection == nil)
+                    .accessibilityIdentifier("selection.preview")
+            }
+            if inkSelection != nil && !selectionHasInk {
+                Text("필기가 있는 부분을 선택해 주세요.").font(.caption).foregroundStyle(.secondary)
+            }
+        }.padding(14).background(.regularMaterial)
+    }
+
+    private var placementToolbar: some View {
+        VStack(spacing: 8) {
+            Text("끌어서 위치를 옮기고, 크기를 조절한 뒤 넣으세요.").font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Text("크기").font(.caption)
+                Slider(value: $placementMultiplier, in: 0.25...2, step: 0.05).accessibilityLabel("손글씨 크기")
+                Text("\(Int(placementMultiplier * 100))%").font(.caption.monospacedDigit()).frame(width: 42)
+            }
+            HStack {
+                Button("취소") { placingSnippet = nil; placementPreview = nil }
+                Spacer()
+                Button("가운데 배치") { centerPlacement() }.font(.subheadline)
+                Spacer()
+                Button("노트에 넣기", action: commitPlacement).font(.subheadline.bold())
+                    .accessibilityIdentifier("snippets.commitInsertion")
+            }
+        }.padding(14).frame(maxWidth: 560).frame(maxWidth: .infinity).background(.regularMaterial)
+    }
+
+    private func beginSelection() {
+        saveCurrentDrawing()
+        inkSelection = nil
+        selectionHasInk = false
+        isSelecting = true
+    }
+
+    private func validateSelection() {
+        selectionHasInk = inkSelection.map { InkSelection.hasInk(canvasView.drawing, in: $0.rect) } ?? false
+    }
+
+    private func previewSelection() {
+        guard let selection = inkSelection else { return }
+        validateSelection()
+        guard selectionHasInk else { return }
+        saveCurrentDrawing()
+        let page = noteStore.currentPage
+        let frozen = NotePage(id: page.id, title: page.title, drawing: canvasView.drawing,
+                              paperStyle: page.paperStyle, createdAt: page.createdAt)
+        exportSheet = ExportSheetRequest(page: frozen, options: NoteImageExportOptions(selection: selection))
+        isSelecting = false
+        inkSelection = nil
+    }
+
+    private func saveSnippet(title: String, options: NoteImageExportOptions, page: NotePage) throws {
+        guard proStore.isPro else { throw InkSnippetError.requiresPro }
+        guard let selection = options.selection ?? NoteSelection(rect: page.drawing.bounds.insetBy(dx: -24, dy: -24)) else {
+            throw InkSnippetError.emptySelection
+        }
+        try snippetStore.add(drawing: page.drawing, selection: selection, title: title)
+    }
+
+    private func beginPlacement(_ item: InkSnippet) {
+        guard proStore.isPro else { returnToSnippets = true; presentPaywall(.snippetLibrary); return }
+        do {
+            placementPreview = UIImage(cgImage: try NotePNGRenderer.render(page: item.page, options: item.imageOptions,
+                                                                          showWatermark: false, maximumDimension: 600))
+            let viewport = canvasView.bounds.size
+            let zoom = max(0.05, canvasView.zoomScale)
+            placementBaseScale = min(1, max(1, viewport.width * 0.6) / (item.size.width * zoom),
+                                    max(1, viewport.height * 0.6) / (item.size.height * zoom))
+            placementMultiplier = 1
+            centerPlacement()
+            placingSnippet = item
+        } catch { exportError = error.localizedDescription }
+    }
+
+    private func centerPlacement() {
+        let zoom = max(0.05, canvasView.zoomScale)
+        placementCenter = CGPoint(x: (canvasView.contentOffset.x + canvasView.bounds.width / 2) / zoom,
+                                  y: (canvasView.contentOffset.y + canvasView.bounds.height / 2) / zoom)
+    }
+
+    private func commitPlacement() {
+        guard let item = placingSnippet else { return }
+        guard proStore.isPro else { presentPaywall(.snippetLibrary); return }
+        let ink = item.drawing(centeredAt: placementCenter, scale: placementBaseScale * placementMultiplier)
+        let page = noteStore.currentPage
+        CanvasDrawingEdits.apply(canvasView.drawing.appending(ink), to: canvasView) { drawing in
+            page.drawing = drawing
+            noteStore.savePages()
+        }
+        placingSnippet = nil
+        placementPreview = nil
+        isEraserMode = false
+    }
+
     private var sidebarView: some View {
         GeometryReader { proxy in
             ZStack(alignment: .trailing) {
@@ -291,6 +447,11 @@ struct ContentView: View {
                     }
                     Button("종이를 골라 새 노트", systemImage: "square.grid.2x2") { requestTemplates() }
                         .font(.subheadline)
+                    Button("손글씨 보관함", systemImage: "square.stack.3d.up") {
+                        saveCurrentDrawing()
+                        showSidebar = false
+                        showSnippets = true
+                    }.font(.subheadline).accessibilityIdentifier("snippets.open")
                     ScrollView {
                         LazyVStack(spacing: 10) {
                             if filteredPages.isEmpty {
@@ -317,7 +478,7 @@ struct ContentView: View {
                                 Image(systemName: "sparkles")
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("스케치를 자유롭게 꺼내 쓰세요").font(.subheadline.bold())
-                                    Text("무제한 노트 · 투명 PNG · 깔끔한 출력")
+                                    Text("무제한 노트 · 투명 PNG · 손글씨 보관함")
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer(minLength: 0)
@@ -513,6 +674,9 @@ struct ContentView: View {
         } else if let request = pendingExport {
             pendingExport = nil
             startExport(request)
+        } else if let item = pendingSnippet {
+            pendingSnippet = nil
+            beginPlacement(item)
         }
     }
 
@@ -526,6 +690,8 @@ struct ContentView: View {
         case "paywall": presentPaywall(.general)
         case "templates": showTemplates = true
         case "export": exportSheet = ExportSheetRequest(page: noteStore.currentPage)
+        case "selection": beginSelection()
+        case "snippets": showSnippets = true
         default: break
         }
         #endif

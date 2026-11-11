@@ -27,6 +27,7 @@ struct NoteImageExportOptions: Hashable {
 
     var area: Area = .content
     var background: Background = .paper
+    var selection: NoteSelection?
 
     static let fullPage = Self(area: .page, background: .paper)
 }
@@ -40,16 +41,18 @@ struct NoteImageLayout {
     let scale: CGFloat
     let hasFooter: Bool
 
-    init(drawingBounds: CGRect, options: NoteImageExportOptions, showWatermark: Bool) {
+    init(drawingBounds: CGRect, options: NoteImageExportOptions, showWatermark: Bool, maximumDimension: CGFloat = 2500) {
         let page = CGRect(origin: .zero, size: NoteCanvas.size)
         let validInk = !drawingBounds.isNull && !drawingBounds.isEmpty &&
             [drawingBounds.minX, drawingBounds.minY, drawingBounds.width, drawingBounds.height].allSatisfy { $0.isFinite }
-        let cropped = options.area == .content && validInk
-        sourceRect = cropped ? drawingBounds.insetBy(dx: -24, dy: -24).integral : page
+        let selected = options.selection.flatMap { $0.isValid ? $0.rect : nil }
+        let cropped = selected != nil || (options.area == .content && validInk)
+        sourceRect = selected ?? (cropped ? drawingBounds.insetBy(dx: -24, dy: -24).integral : page)
         hasFooter = cropped && showWatermark
         let footer: CGFloat = hasFooter ? 40 : 0
-        scale = cropped ? min(2, 2500 / sourceRect.width, (2500 - footer) / sourceRect.height) : 0.5
-        let size = CGSize(width: ceil(sourceRect.width * scale), height: ceil(sourceRect.height * scale))
+        let maximum = max(180, min(2500, maximumDimension))
+        scale = cropped ? min(2, maximum / sourceRect.width, (maximum - footer) / sourceRect.height) : min(0.5, maximum / page.height)
+        let size = CGSize(width: min(maximum, ceil(sourceRect.width * scale)), height: min(maximum - footer, ceil(sourceRect.height * scale)))
         outputSize = CGSize(width: max(hasFooter ? 180 : 1, size.width), height: max(1, size.height + footer))
         contentRect = CGRect(x: (outputSize.width - size.width) / 2, y: 0, width: size.width, height: size.height)
     }

@@ -8,12 +8,12 @@
       "internalID" : "spnpro001",
       "localizations" : [
         {
-          "description" : "무제한 페이지, 투명 PNG 공유·복사, 워터마크 없는 PNG·PDF, PDF 묶기. 일회 결제, 구독 없음.",
+          "description" : "무제한 페이지, 기기 내 손글씨 보관함, 투명 PNG, 워터마크 없는 출력과 PDF 묶기. 일회 구매.",
           "displayName" : "Pro",
           "locale" : "ko_KR"
         },
         {
-          "description" : "Unlimited pages. Transparent PNG sharing and copying. Watermark-free PNG/PDF and PDF bundles. One purchase.",
+          "description" : "Unlimited pages, on-device handwriting library, transparent PNGs, clean exports and PDF bundles. One purchase.",
           "displayName" : "Pro",
           "locale" : "en_US"
         }

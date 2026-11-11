@@ -97,6 +97,44 @@ final class MonetizationFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["현재 노트 내보내기"].waitForExistence(timeout: 5))
     }
 
+    func testPartialSelectionStaysFreeAndSaveUpgradePreservesTheSelection() {
+        let app = launch(screen: "selection")
+        let allInk = app.buttons["전체 필기 선택"]
+        XCTAssertTrue(allInk.waitForExistence(timeout: 10))
+        allInk.tap()
+        let preview = app.buttons["selection.preview"]
+        XCTAssertTrue(preview.isEnabled)
+        preview.tap()
+        XCTAssertTrue(app.navigationBars["선택 영역 내보내기"].waitForExistence(timeout: 5))
+        let png = app.buttons["PNG 이미지로 공유"]
+        reveal(png, in: app)
+        XCTAssertTrue(png.exists)
+        XCTAssertFalse(app.buttons["paywall.close"].exists)
+        XCTAssertFalse(app.switches["export.crop"].exists)
+        let save = app.buttons["export.saveSnippet"]
+        reveal(save, in: app)
+        save.tap()
+        XCTAssertTrue(app.buttons["paywall.close"].waitForExistence(timeout: 5))
+        XCTAssertTrue(text(containing: "계속 꺼내 쓰세요", in: app).exists)
+        app.buttons["paywall.close"].tap()
+        XCTAssertTrue(app.navigationBars["선택 영역 내보내기"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.switches["export.crop"].exists)
+    }
+
+    func testSnippetLibraryExplainsStorageAndReturnsAfterUpgradeDismissal() {
+        let app = launch(screen: "snippets")
+        XCTAssertTrue(app.navigationBars["손글씨 보관함"].waitForExistence(timeout: 10))
+        XCTAssertTrue(text(containing: "보관함은 이 기기에 저장됩니다", in: app).exists)
+        let upgrade = app.buttons["Pro로 손글씨 보관함 사용"]
+        upgrade.tap()
+        XCTAssertTrue(app.buttons["paywall.close"].waitForExistence(timeout: 5))
+        XCTAssertTrue(text(containing: "계속 꺼내 쓰세요", in: app).exists)
+        app.buttons["paywall.close"].tap()
+        XCTAssertTrue(app.navigationBars["손글씨 보관함"].waitForExistence(timeout: 5))
+        app.buttons["닫기"].tap()
+        XCTAssertTrue(app.buttons["필기 부분 선택"].waitForExistence(timeout: 5))
+    }
+
     private func launch(screen: String, pageCount: Int = 5) -> XCUIApplication {
         let app = XCUIApplication()
         // Demo data is isolated from real notes and starts with five active pages.

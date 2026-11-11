@@ -150,7 +150,7 @@ final class ProStore: ObservableObject {
 // MARK: - Paywall
 
 enum PaywallContext: String, Identifiable {
-    case general, pageLimit, cleanExport, batchExport, transparentExport
+    case general, pageLimit, cleanExport, batchExport, transparentExport, snippetLibrary
 
     var id: String { rawValue }
 
@@ -161,6 +161,7 @@ enum PaywallContext: String, Identifiable {
         case .cleanExport: return "내 필기만 담아\n깔끔하게 공유하세요."
         case .batchExport: return "여러 장의 기록을\n하나의 PDF로."
         case .transparentExport: return "배경 없이,\n내 스케치만 쏙."
+        case .snippetLibrary: return "한 번 그려두고,\n계속 꺼내 쓰세요."
         }
     }
 
@@ -171,6 +172,7 @@ enum PaywallContext: String, Identifiable {
         case .cleanExport: return "짧은 메모와 스케치를 워터마크 없이 깔끔하게 공유하세요."
         case .batchExport: return "흩어진 노트를 한 파일로 모아 보관하고 공유하세요."
         case .transparentExport: return "투명 PNG로 저장하거나 복사해 메시지, 문서, 디자인에 붙여넣으세요."
+        case .snippetLibrary: return "자주 쓰는 화살표, 체크 표시와 손글씨를 보관하고 다른 노트에 다시 넣으세요."
         }
     }
 }
@@ -201,6 +203,7 @@ struct PaywallView: View {
                         benefitRow("square.stack.3d.up", "페이지 제한 없이", "짧은 메모와 떠오른 아이디어를 원하는 만큼 기록")
                         benefitRow("square.and.arrow.up", "워터마크 없는 PNG · PDF", "내 필기만 깔끔하게 저장하고 공유")
                         benefitRow("square.on.circle", "배경 없는 투명 PNG", "스케치만 저장하거나 복사해 다른 앱에 붙여넣기")
+                        benefitRow("square.stack.3d.up.fill", "나만의 손글씨 보관함", "이 기기에 저장하고 다른 노트에 필기 원본으로 다시 넣기")
                         benefitRow("doc.on.doc", "여러 페이지를 하나의 PDF로", "선택한 노트를 한 파일로 묶어 내보내기")
                     }
                     .padding(22)

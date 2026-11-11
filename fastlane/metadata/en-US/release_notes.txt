@@ -1,4 +1,5 @@
-• Create a note with one tap. Your last pen color, width, and chosen paper are remembered.
-• A collapsible toolbar gives your handwriting more room.
-• Preview PNG exports and automatically crop unused space for free.
-• Pro now includes transparent PNG sharing and copying for use in other apps, also available to existing Pro owners.
+• Select a rectangle around the handwriting you need and share it as a PNG. Sharing with paper remains free.
+• Pro now includes a handwriting library. Save arrows, checkmarks, and handwritten snippets for reuse in other notes.
+• Adjust position and size before inserting, with undo and redo support.
+• Copy or share saved handwriting as transparent PNGs. Available to existing Pro owners.
+• The library is stored on this device. Ink inserted into a note syncs through the existing note sync.
