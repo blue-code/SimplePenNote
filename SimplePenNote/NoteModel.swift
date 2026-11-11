@@ -11,12 +11,12 @@ enum PaperStyle: String, CaseIterable, Identifiable, Codable {
 
     var displayName: String {
         switch self {
-        case .blank: return "무지"
-        case .grid: return "모눈"
-        case .lines: return "줄글"
-        case .cornell: return "코넬 노트"
-        case .weekly: return "위클리"
-        case .study: return "오답 노트"
+        case .blank: return String(localized: "무지")
+        case .grid: return String(localized: "모눈")
+        case .lines: return String(localized: "줄글")
+        case .cornell: return String(localized: "코넬 노트")
+        case .weekly: return String(localized: "위클리")
+        case .study: return String(localized: "오답 노트")
         }
     }
 
@@ -48,7 +48,7 @@ class NotePage: Identifiable, ObservableObject, Codable {
     }
 
     init(id: UUID = UUID(),
-         title: String = "새로운 노트",
+         title: String = String(localized: "새로운 노트"),
          drawing: PKDrawing = PKDrawing(),
          paperStyle: PaperStyle = .grid,
          createdAt: Date = Date(),
@@ -125,7 +125,7 @@ extension NotePage {
 
     static func fromCKRecord(_ record: CKRecord) -> NotePage? {
         guard let id = UUID(uuidString: record.recordID.recordName) else { return nil }
-        let title = record[CK.Field.title] as? String ?? "노트"
+        let title = record[CK.Field.title] as? String ?? String(localized: "노트")
         let paperStyleRaw = record[CK.Field.paperStyle] as? String ?? "blank"
         let paperStyle = PaperStyle(rawValue: paperStyleRaw) ?? .blank
         let createdAt = record[CK.Field.createdAt] as? Date ?? record.creationDate ?? Date()
@@ -188,7 +188,7 @@ class NoteStore: ObservableObject {
         loadPendingOperations()
         loadFromLocalCache()
         if pages.filter({ $0.deletedAt == nil }).isEmpty {
-            let first = NotePage(title: "첫 영감", paperStyle: .blank)
+            let first = NotePage(title: String(localized: "첫 영감"), paperStyle: .blank)
             pages.append(first)
             currentPageIndex = pages.count - 1
             enqueueSync(first.id)
@@ -226,7 +226,7 @@ class NoteStore: ObservableObject {
     }
 
     func addNewPage(title: String? = nil, paperStyle: PaperStyle = .grid) {
-        let new = NotePage(title: title ?? "노트 \(activePages.count + 1)", paperStyle: paperStyle)
+        let new = NotePage(title: title ?? String(localized: "노트 \(activePages.count + 1)"), paperStyle: paperStyle)
         pages.append(new)
         currentPageIndex = pages.count - 1
         enqueueSync(new.id)
@@ -235,7 +235,7 @@ class NoteStore: ObservableObject {
     }
 
     func duplicatePage(_ page: NotePage) {
-        let copy = NotePage(title: "\(page.title) 복사본", drawing: page.drawing,
+        let copy = NotePage(title: String(localized: "\(page.title) 복사본"), drawing: page.drawing,
                             paperStyle: page.paperStyle)
         pages.append(copy)
         currentPageIndex = pages.count - 1
@@ -273,7 +273,7 @@ class NoteStore: ObservableObject {
         }
         // Ensure at least one active page remains.
         if activePages.isEmpty {
-            let fresh = NotePage(title: "새 노트", paperStyle: .grid)
+            let fresh = NotePage(title: String(localized: "새 노트"), paperStyle: .grid)
             pages.append(fresh)
             currentPageIndex = pages.count - 1
             enqueueSync(fresh.id)
@@ -365,7 +365,7 @@ class NoteStore: ObservableObject {
         } else if let index = pages.firstIndex(where: { $0.deletedAt == nil }) {
             currentPageIndex = index
         } else {
-            let fresh = NotePage(title: "첫 영감", paperStyle: .blank)
+            let fresh = NotePage(title: String(localized: "첫 영감"), paperStyle: .blank)
             pages.append(fresh)
             enqueueSync(fresh.id)
             currentPageIndex = pages.count - 1

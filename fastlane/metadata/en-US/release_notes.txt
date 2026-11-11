@@ -1,7 +1,6 @@
-• Select a rectangle around the handwriting you need and share it as a PNG. Sharing with paper remains free.
-• Pro now includes a handwriting library. Save arrows, checkmarks, and handwritten snippets for reuse in other notes.
-• Adjust position and size before inserting, with undo and redo support.
-• Copy or share saved handwriting as transparent PNGs. Available to existing Pro owners.
-• The library is stored on this device. Ink inserted into a note syncs through the existing note sync.
-
-• Optimized for iPhone Duo. Half-fold it to write on top with tools below, or open it like a book to see your notes list beside the page.
+• Select a rectangle around the handwriting you need and share it as a PNG.
+• New Pro handwriting library: save arrows, checkmarks and short notes, insert them into other notes, or copy them as transparent PNGs.
+• Transparent PNGs and auto-crop make it easy to paste your writing into other apps.
+• Optimized for iPhone Duo and iPad. Half-fold to write on top with tools below, or open it like a book to see your notes list beside the page.
+• One tap opens a new note, and your last pen color and width are remembered.
+• Now available in English, Japanese and Simplified Chinese.

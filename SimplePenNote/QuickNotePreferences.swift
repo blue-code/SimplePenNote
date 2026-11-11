@@ -15,11 +15,11 @@ enum NotePenColor: String, CaseIterable, Identifiable {
     }
     var label: String {
         switch self {
-        case .ink: return "검정 펜"
-        case .red: return "빨간 펜"
-        case .blue: return "파란 펜"
-        case .green: return "초록 펜"
-        case .purple: return "보라 펜"
+        case .ink: return String(localized: "검정 펜")
+        case .red: return String(localized: "빨간 펜")
+        case .blue: return String(localized: "파란 펜")
+        case .green: return String(localized: "초록 펜")
+        case .purple: return String(localized: "보라 펜")
         }
     }
 }

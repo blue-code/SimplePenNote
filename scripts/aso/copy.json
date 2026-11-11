@@ -1,0 +1,34 @@
+{
+  "ko": [
+    ["손글씨 노트", "펜만 들면\n바로 메모", "켜자마자 쓰는 미니멀 손글씨 노트"],
+    ["부분 선택", "필요한 부분만\n쏙 골라내기", "사각형으로 선택해 PNG로 공유"],
+    ["투명 PNG", "배경 없이\n스케치만 붙여넣기", "문서·메시지·디자인에 바로"],
+    ["손글씨 보관함", "한 번 그린 손글씨,\n계속 꺼내 쓰기", "체크·화살표·짧은 문구를 보관"],
+    ["6가지 종이", "오늘 쓸 종이를\n골라 보세요", "무지부터 코넬·위클리까지 무료"],
+    ["일회 구매", "구독 없이\n한 번만 결제", "광고 없음 · 추적 없음 · 회원가입 없음"]
+  ],
+  "en-US": [
+    ["Handwriting notes", "Open it.\nStart writing.", "A minimal notebook for your handwriting"],
+    ["Select", "Grab just the\npart you need", "Drag a rectangle, share it as a PNG"],
+    ["Transparent PNG", "Paste the sketch,\nnot the paper", "Drop it into docs, chats and designs"],
+    ["Handwriting library", "Draw it once,\nreuse it anytime", "Keep checks, arrows and quick notes"],
+    ["Six papers", "Pick the paper\nfor today", "Blank to Cornell and weekly, all free"],
+    ["One-time purchase", "No subscription.\nPay once.", "No ads · No tracking · No sign-up"]
+  ],
+  "ja": [
+    ["手書きノート", "開いたら、\nすぐ書ける", "手書きのためのミニマルなノート"],
+    ["部分選択", "必要な部分だけ\nサッと切り取る", "四角で囲んでPNGで共有"],
+    ["透過PNG", "背景なしで\nスケッチだけ貼る", "資料やメッセージ、デザインに"],
+    ["手書きライブラリ", "一度描いた手書きを\n何度でも", "チェックや矢印、ひと言メモを保存"],
+    ["6種類の用紙", "今日の用紙を\n選ぼう", "無地からコーネル、週間まで無料"],
+    ["買い切り", "サブスクなし、\n一度の購入で", "広告なし・追跡なし・登録不要"]
+  ],
+  "zh-Hans": [
+    ["手写笔记", "打开就能写", "专注手写的极简笔记本"],
+    ["部分选择", "只框出\n需要的部分", "拖出矩形，直接分享为 PNG"],
+    ["透明 PNG", "去掉纸张，\n只贴草图", "直接放进文档、聊天和设计"],
+    ["手写库", "画一次，\n随时再用", "收藏对勾、箭头和短句"],
+    ["6 种纸张", "挑一张\n今天用的纸", "空白到康奈尔、周计划，全部免费"],
+    ["一次买断", "无需订阅，\n一次买断", "无广告 · 无追踪 · 无需注册"]
+  ]
+}

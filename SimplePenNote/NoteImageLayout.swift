@@ -8,11 +8,11 @@ enum NoteExportError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noPages:
-            return "내보낼 노트를 선택해 주세요."
+            return String(localized: "내보낼 노트를 선택해 주세요.")
         case .multipleImages:
-            return "PNG는 한 페이지씩 내보낼 수 있습니다. 여러 페이지는 PDF를 선택해 주세요."
+            return String(localized: "PNG는 한 페이지씩 내보낼 수 있습니다. 여러 페이지는 PDF를 선택해 주세요.")
         case .renderingFailed:
-            return "노트를 파일로 만들지 못했습니다. 다시 시도해 주세요."
+            return String(localized: "노트를 파일로 만들지 못했습니다. 다시 시도해 주세요.")
         }
     }
 }

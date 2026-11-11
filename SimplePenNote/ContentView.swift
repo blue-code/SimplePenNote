@@ -293,7 +293,7 @@ struct ContentView: View {
                 }.accessibilityLabel(showSidebar ? "나의 노트 닫기" : "나의 노트 열기")
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(noteStore.currentPage.title.isEmpty ? "제목 없는 노트" : noteStore.currentPage.title)
+                Text(noteStore.currentPage.title.isEmpty ? String(localized: "제목 없는 노트") : noteStore.currentPage.title)
                     .font(.headline).lineLimit(1)
                 Text(noteStore.currentPage.paperStyle.displayName)
                     .font(.caption).foregroundStyle(.secondary)
@@ -760,9 +760,109 @@ struct ContentView: View {
         }
     }
 
+    #if DEBUG
+    /// App Preview footage: drives the real UI through the main features on a fixed timeline
+    /// (writing → partial selection → transparent PNG → handwriting library → paper → Pro).
+    /// Timings are mirrored in scripts/aso/make_preview.py for the caption track.
+    @MainActor
+    private func runAutoplay() async {
+        func wait(_ seconds: Double) async { try? await Task.sleep(for: .milliseconds(Int(seconds * 1000))) }
+        var origin = Date()
+        // Times are relative to scene 0, so console delivery lag doesn't shift the captions.
+        func scene(_ n: Int) { print("AUTOPLAY \(n) \(Date().timeIntervalSince(origin))"); fflush(stdout) }
+        let page = noteStore.currentPage
+        let full = page.drawing
+        canvasView.drawing = PKDrawing()
+        await wait(1.0)
+        // 1. Write the page stroke by stroke (~5 s).
+        origin = Date()
+        scene(0)
+        let strokes = full.strokes
+        let batch = max(1, strokes.count / 60)
+        var shown: [PKStroke] = []
+        for chunk in stride(from: 0, to: strokes.count, by: batch) {
+            shown += strokes[chunk..<min(chunk + batch, strokes.count)]
+            canvasView.drawing = PKDrawing(strokes: shown)
+            await wait(0.07)
+        }
+        canvasView.drawing = full
+        page.drawing = full
+        await wait(1.0)
+        // 2. Drag a selection around the sketch (~2.5 s).
+        scene(1)
+        beginSelection()
+        let target = DemoData.sketchSelection.rect
+        for step in 1...30 {
+            let t = CGFloat(step) / 30
+            let eased = 1 - pow(1 - t, 3)
+            inkSelection = NoteSelection(rect: CGRect(x: target.minX, y: target.minY,
+                                                      width: max(8, target.width * eased), height: max(8, target.height * eased)))
+            await wait(1.2 / 30)
+        }
+        validateSelection()
+        await wait(1.3)
+        // 3. Transparent PNG export (~3.5 s).
+        isSelecting = false
+        inkSelection = nil
+        var options = NoteImageExportOptions(selection: DemoData.sketchSelection)
+        options.background = .transparent
+        scene(2)
+        exportSheet = ExportSheetRequest(page: page, options: options)
+        await wait(3.2)
+        exportSheet = nil
+        await wait(0.7)
+        // 4. Handwriting library, then insert a snippet into the note (~6.5 s).
+        scene(3)
+        showSnippets = true
+        await wait(2.4)
+        showSnippets = false
+        await wait(0.7)
+        if let item = snippetStore.items.dropFirst(3).first {
+            beginPlacement(item)
+            let start = placementCenter
+            let k: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 1.7 : 1
+            let goal = CGPoint(x: 335 * k, y: 540 * k)   // empty space right of "Pack"
+            await wait(0.6)
+            for step in 1...36 {
+                let t = CGFloat(step) / 36
+                let eased = t * t * (3 - 2 * t)
+                placementCenter = CGPoint(x: start.x + (goal.x - start.x) * eased, y: start.y + (goal.y - start.y) * eased)
+                placementMultiplier = 1 - 0.25 * eased
+                await wait(1.4 / 36)
+            }
+            await wait(0.5)
+            commitPlacement()
+            await wait(0.05)
+            let drawing = canvasView.drawing   // force PencilKit to render the inserted ink now
+            canvasView.drawing = PKDrawing()
+            canvasView.drawing = drawing
+        }
+        await wait(1.3)
+        // 5. Paper templates (~2.5 s), 6. Pro (~3 s).
+        scene(4)
+        showTemplates = true
+        await wait(2.5)
+        showTemplates = false
+        await wait(0.7)
+        scene(5)
+        presentPaywall(.general)
+        await wait(3.0)
+        scene(6)
+    }
+    #endif
+
     private func applyLaunchOptions() {
         #if DEBUG
         guard DemoData.isEnabled else { return }
+        snippetStore.loadDemo(DemoData.buildSnippets())
+        // PencilKit can leave part of a drawing unrendered when it is assigned before the
+        // canvas is on screen; reassigning once it is visible gives clean captures.
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1))
+            let drawing = canvasView.drawing
+            canvasView.drawing = PKDrawing()
+            canvasView.drawing = drawing
+        }
         switch DemoData.initialScreen {
         case "sidebar": showSidebar = true
         case "settings": showSettings = true
@@ -772,6 +872,23 @@ struct ContentView: View {
         case "export": exportSheet = ExportSheetRequest(page: noteStore.currentPage)
         case "selection": beginSelection()
         case "snippets": showSnippets = true
+        case "selectionPreset":
+            beginSelection()
+            inkSelection = DemoData.sketchSelection
+            validateSelection()
+        case "exportSelection":
+            var options = NoteImageExportOptions(selection: DemoData.sketchSelection)
+            options.background = .transparent
+            exportSheet = ExportSheetRequest(page: noteStore.currentPage, options: options)
+        case "autoplay":
+            Task { @MainActor in await runAutoplay() }
+        case "placement":
+            if let item = snippetStore.items.dropFirst(3).first {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(1))
+                    beginPlacement(item)
+                }
+            }
         default: break
         }
         #endif
@@ -805,7 +922,7 @@ struct TrashView: View {
                         ForEach(noteStore.trashedPages) { page in
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(page.title.isEmpty ? "(제목 없음)" : page.title)
+                                    Text(page.title.isEmpty ? String(localized: "(제목 없음)") : page.title)
                                         .font(.body)
                                     if let deletedAt = page.deletedAt {
                                         Text(daysRemainingText(deletedAt: deletedAt))
@@ -843,7 +960,7 @@ struct TrashView: View {
     private func daysRemainingText(deletedAt: Date) -> String {
         let cutoff = deletedAt.addingTimeInterval(30 * 24 * 60 * 60)
         let days = max(0, Calendar.current.dateComponents([.day], from: Date(), to: cutoff).day ?? 0)
-        return "\(days)일 후 영구 삭제"
+        return String(localized: "\(days)일 후 영구 삭제")
     }
 }
 

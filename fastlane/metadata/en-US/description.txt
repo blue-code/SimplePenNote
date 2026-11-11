@@ -20,6 +20,9 @@ Notes sync across your iPhone and iPad signed in with the same Apple ID. No thir
 -- Select and export
 Select a rectangle around the handwriting you need, or automatically crop unused space. Preview and share PNGs with paper for free. PDFs preserve the whole paper. Free exports include a watermark.
 
+-- Made for iPhone Duo and iPad
+Half-fold to write on top with tools below. Open it like a book to see your notes list beside the page.
+
 -- Find and reuse notes
 Search by title, duplicate notes, and choose pen colors and widths.
 

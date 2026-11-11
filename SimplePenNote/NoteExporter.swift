@@ -43,7 +43,7 @@ enum NoteExporter {
                 let pdfFormat = UIGraphicsPDFRendererFormat()
                 pdfFormat.documentInfo = [
                     kCGPDFContextCreator as String: "SimplePenNote",
-                    kCGPDFContextTitle as String: pages.count == 1 ? pages[0].title : "나의 노트"
+                    kCGPDFContextTitle as String: pages.count == 1 ? pages[0].title : String(localized: "나의 노트")
                 ]
                 let renderer = UIGraphicsPDFRenderer(bounds: CGRect(origin: .zero, size: outputSize),
                                                      format: pdfFormat)
@@ -91,7 +91,7 @@ enum NoteExporter {
         let url = directory.appendingPathComponent("SimplePenNote.pdf")
         var bounds = CGRect(origin: .zero, size: outputSize)
         let info = [kCGPDFContextCreator as String: "SimplePenNote",
-                    kCGPDFContextTitle as String: "나의 노트"]
+                    kCGPDFContextTitle as String: String(localized: "나의 노트")]
         guard let pdf = CGContext(url as CFURL, mediaBox: &bounds, info as CFDictionary) else {
             try? FileManager.default.removeItem(at: directory)
             throw NoteExportError.renderingFailed

@@ -23,7 +23,7 @@ final class LockManager: ObservableObject {
     /// Prompt biometric authentication. On success, unlock.
     func authenticate() async {
         let context = LAContext()
-        context.localizedFallbackTitle = "암호 입력"
+        context.localizedFallbackTitle = String(localized: "암호 입력")
         var error: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
             // No biometrics or passcode set on the device — fail open to avoid bricking.
@@ -32,7 +32,7 @@ final class LockManager: ObservableObject {
         }
         do {
             let success = try await context.evaluatePolicy(.deviceOwnerAuthentication,
-                                                           localizedReason: "노트 잠금 해제")
+                                                           localizedReason: String(localized: "노트 잠금 해제"))
             if success { isLocked = false }
         } catch {
             // User cancelled or failed — remain locked.
@@ -46,7 +46,7 @@ final class LockManager: ObservableObject {
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else { return false }
         do {
             let success = try await context.evaluatePolicy(.deviceOwnerAuthentication,
-                                                           localizedReason: "앱 잠금을 활성화합니다")
+                                                           localizedReason: String(localized: "앱 잠금을 활성화합니다"))
             if success { isEnabled = true }
             return success
         } catch {
@@ -61,7 +61,7 @@ final class LockManager: ObservableObject {
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else { return false }
         do {
             let success = try await context.evaluatePolicy(.deviceOwnerAuthentication,
-                                                           localizedReason: "앱 잠금을 해제합니다")
+                                                           localizedReason: String(localized: "앱 잠금을 해제합니다"))
             if success {
                 isEnabled = false
                 isLocked = false

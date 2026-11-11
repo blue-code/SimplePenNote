@@ -52,10 +52,10 @@ final class ProStore: ObservableObject {
             let products = try await Product.products(for: [Self.productID])
             product = products.first { $0.id == Self.productID && $0.type == .nonConsumable }
             if product == nil {
-                productLoadError = "현재 스토어에서 Pro 상품을 불러올 수 없습니다. 잠시 후 다시 시도해 주세요."
+                productLoadError = String(localized: "현재 스토어에서 Pro 상품을 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.")
             }
         } catch {
-            productLoadError = "스토어에 연결하지 못했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요."
+            productLoadError = String(localized: "스토어에 연결하지 못했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.")
         }
     }
 
@@ -72,6 +72,9 @@ final class ProStore: ObservableObject {
         }
         // A transaction update or a newer refresh can arrive while iterating.
         guard generation == entitlementRefreshGeneration else { return }
+        #if DEBUG
+        if DemoData.isPro { found = true }
+        #endif
         isPro = found
         hasLoadedEntitlements = true
         if found {
@@ -95,9 +98,9 @@ final class ProStore: ObservableObject {
                 break
             case .pending:
                 hasPendingPurchase = true
-                statusMessage = "구매 승인을 기다리고 있습니다. 승인되면 Pro가 자동으로 활성화됩니다."
+                statusMessage = String(localized: "구매 승인을 기다리고 있습니다. 승인되면 Pro가 자동으로 활성화됩니다.")
             @unknown default:
-                purchaseError = "구매 상태를 확인하지 못했습니다. 구매 복원을 시도해 주세요."
+                purchaseError = String(localized: "구매 상태를 확인하지 못했습니다. 구매 복원을 시도해 주세요.")
             }
         } catch {
             purchaseError = error.localizedDescription
@@ -113,7 +116,7 @@ final class ProStore: ObservableObject {
         do {
             try await AppStore.sync()
             await refreshEntitlement()
-            statusMessage = isPro ? "Pro 구매를 복원했습니다." : "현재 Apple 계정에서 복원할 Pro 구매를 찾지 못했습니다."
+            statusMessage = isPro ? String(localized: "Pro 구매를 복원했습니다.") : String(localized: "현재 Apple 계정에서 복원할 Pro 구매를 찾지 못했습니다.")
         } catch {
             purchaseError = error.localizedDescription
         }
@@ -133,7 +136,7 @@ final class ProStore: ObservableObject {
             await refreshEntitlement()
         case .unverified(let transaction, _):
             guard transaction.productID == Self.productID else { return }
-            purchaseError = "구매 정보를 검증하지 못했습니다. Pro가 활성화되지 않았다면 구매 복원을 시도해 주세요."
+            purchaseError = String(localized: "구매 정보를 검증하지 못했습니다. Pro가 활성화되지 않았다면 구매 복원을 시도해 주세요.")
         }
     }
 
@@ -156,23 +159,23 @@ enum PaywallContext: String, Identifiable {
 
     var title: String {
         switch self {
-        case .general: return "기록은 자유롭게,\n공유는 깔끔하게."
-        case .pageLimit: return "다음 아이디어도\n계속 기록하세요."
-        case .cleanExport: return "내 필기만 담아\n깔끔하게 공유하세요."
-        case .batchExport: return "여러 장의 기록을\n하나의 PDF로."
-        case .transparentExport: return "배경 없이,\n내 스케치만 쏙."
-        case .snippetLibrary: return "한 번 그려두고,\n계속 꺼내 쓰세요."
+        case .general: return String(localized: "기록은 자유롭게,\n공유는 깔끔하게.")
+        case .pageLimit: return String(localized: "다음 아이디어도\n계속 기록하세요.")
+        case .cleanExport: return String(localized: "내 필기만 담아\n깔끔하게 공유하세요.")
+        case .batchExport: return String(localized: "여러 장의 기록을\n하나의 PDF로.")
+        case .transparentExport: return String(localized: "배경 없이,\n내 스케치만 쏙.")
+        case .snippetLibrary: return String(localized: "한 번 그려두고,\n계속 꺼내 쓰세요.")
         }
     }
 
     var subtitle: String {
         switch self {
-        case .general: return "떠오른 생각을 마음껏 쓰고, 원하는 곳에 꺼내 쓰세요."
-        case .pageLimit: return "무료 페이지 \(ProStore.freePageLimit)장을 모두 사용했습니다. Pro로 제한 없이 이어가세요."
-        case .cleanExport: return "짧은 메모와 스케치를 워터마크 없이 깔끔하게 공유하세요."
-        case .batchExport: return "흩어진 노트를 한 파일로 모아 보관하고 공유하세요."
-        case .transparentExport: return "투명 PNG로 저장하거나 복사해 메시지, 문서, 디자인에 붙여넣으세요."
-        case .snippetLibrary: return "자주 쓰는 화살표, 체크 표시와 손글씨를 보관하고 다른 노트에 다시 넣으세요."
+        case .general: return String(localized: "떠오른 생각을 마음껏 쓰고, 원하는 곳에 꺼내 쓰세요.")
+        case .pageLimit: return String(localized: "무료 페이지 \(ProStore.freePageLimit)장을 모두 사용했습니다. Pro로 제한 없이 이어가세요.")
+        case .cleanExport: return String(localized: "짧은 메모와 스케치를 워터마크 없이 깔끔하게 공유하세요.")
+        case .batchExport: return String(localized: "흩어진 노트를 한 파일로 모아 보관하고 공유하세요.")
+        case .transparentExport: return String(localized: "투명 PNG로 저장하거나 복사해 메시지, 문서, 디자인에 붙여넣으세요.")
+        case .snippetLibrary: return String(localized: "자주 쓰는 화살표, 체크 표시와 손글씨를 보관하고 다른 노트에 다시 넣으세요.")
         }
     }
 }
@@ -249,9 +252,18 @@ struct PaywallView: View {
         }
     }
 
+    /// Store captures show the offer even though demo mode unlocks Pro for the other screens.
+    private var isDemoOffer: Bool {
+        #if DEBUG
+        return DemoData.isEnabled
+        #else
+        return false
+        #endif
+    }
+
     private var purchaseControls: some View {
         VStack(spacing: 12) {
-            if proStore.isPro {
+            if proStore.isPro && !isDemoOffer {
                 Label("Pro 사용 중", systemImage: "checkmark.circle.fill")
                     .font(.headline).foregroundStyle(.indigo)
                 Button("계속 기록하기") { dismiss() }
@@ -265,7 +277,7 @@ struct PaywallView: View {
                     if proStore.isLoadingProduct || !proStore.hasLoadedEntitlements {
                         ProgressView("스토어 정보 확인 중")
                     } else {
-                        Text(proStore.productLoadError ?? "스토어 정보를 확인해 주세요.")
+                        Text(proStore.productLoadError ?? String(localized: "스토어 정보를 확인해 주세요."))
                             .font(.footnote).foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                         Button("스토어 다시 불러오기") { Task { await proStore.refresh() } }
@@ -284,7 +296,7 @@ struct PaywallView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.indigo)
-                .disabled(!proStore.canPurchase)
+                .disabled(!proStore.canPurchase && !isDemoOffer)
                 .accessibilityIdentifier("paywall.purchase")
 
                 HStack(spacing: 20) {
@@ -313,13 +325,17 @@ struct PaywallView: View {
     }
 
     private var purchaseButtonTitle: String {
-        if proStore.isPurchasing { return "구매 진행 중" }
-        if proStore.hasPendingPurchase { return "구매 승인 대기 중" }
-        guard let product = proStore.product else { return "Pro 잠금 해제" }
-        return "\(product.displayPrice) · 평생 Pro 잠금 해제"
+        #if DEBUG
+        // Store captures: the StoreKit test price is USD in every locale, so leave it out.
+        if DemoData.isEnabled { return String(localized: "Pro 잠금 해제") }
+        #endif
+        if proStore.isPurchasing { return String(localized: "구매 진행 중") }
+        if proStore.hasPendingPurchase { return String(localized: "구매 승인 대기 중") }
+        guard let product = proStore.product else { return String(localized: "Pro 잠금 해제") }
+        return String(localized: "\(product.displayPrice) · 평생 Pro 잠금 해제")
     }
 
-    private func benefitRow(_ icon: String, _ title: String, _ subtitle: String) -> some View {
+    private func benefitRow(_ icon: String, _ title: LocalizedStringKey, _ subtitle: LocalizedStringKey) -> some View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: icon)
                 .font(.title3)

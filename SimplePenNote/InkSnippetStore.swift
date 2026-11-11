@@ -32,9 +32,9 @@ enum InkSnippetError: LocalizedError {
     case emptySelection, invalidFile, requiresPro
     var errorDescription: String? {
         switch self {
-        case .requiresPro: return "Pro 권한을 확인한 뒤 다시 시도해 주세요."
-        case .emptySelection: return "선택한 범위에 필기가 없습니다. 범위를 다시 골라 주세요."
-        case .invalidFile: return "손글씨 항목을 읽을 수 없습니다. 원본 파일은 그대로 보관합니다."
+        case .requiresPro: return String(localized: "Pro 권한을 확인한 뒤 다시 시도해 주세요.")
+        case .emptySelection: return String(localized: "선택한 범위에 필기가 없습니다. 범위를 다시 골라 주세요.")
+        case .invalidFile: return String(localized: "손글씨 항목을 읽을 수 없습니다. 원본 파일은 그대로 보관합니다.")
         }
     }
 }
@@ -57,6 +57,11 @@ final class InkSnippetStore: ObservableObject {
         let height: CGFloat
         let createdAt: Date
     }
+
+    #if DEBUG
+    /// App Store capture content; never written to disk.
+    func loadDemo(_ demo: [InkSnippet]) { items = demo }
+    #endif
 
     init(directory: URL? = nil, persistChanges: Bool = true) {
         self.directory = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -92,7 +97,7 @@ final class InkSnippetStore: ObservableObject {
 
     private static func cleanTitle(_ title: String) -> String {
         let value = String(title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
-        return value.isEmpty ? "내 손글씨" : value
+        return value.isEmpty ? String(localized: "내 손글씨") : value
     }
 
     private func fileURL(id: UUID) -> URL { directory.appendingPathComponent("\(id.uuidString).inksnippet") }
@@ -119,9 +124,9 @@ final class InkSnippetStore: ObservableObject {
                     guard !drawing.strokes.isEmpty else { throw InkSnippetError.invalidFile }
                     items.append(InkSnippet(id: document.id, title: Self.cleanTitle(document.title), drawing: drawing,
                                             size: region.rect.size, createdAt: document.createdAt))
-                } catch { loadWarning = "일부 손글씨를 불러오지 못했습니다. 원본 파일은 유지됩니다." }
+                } catch { loadWarning = String(localized: "일부 손글씨를 불러오지 못했습니다. 원본 파일은 유지됩니다.") }
             }
             items.sort { $0.createdAt > $1.createdAt }
-        } catch { loadWarning = "손글씨 보관함을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요." }
+        } catch { loadWarning = String(localized: "손글씨 보관함을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.") }
     }
 }

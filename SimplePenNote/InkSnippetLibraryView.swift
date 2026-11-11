@@ -119,7 +119,7 @@ struct InkSnippetLibraryView: View {
             let image = try NoteExporter.pngImage(page: item.page, options: item.imageOptions, showWatermark: false)
             guard let data = image.pngData() else { throw NoteExportError.renderingFailed }
             UIPasteboard.general.setData(data, forPasteboardType: UTType.png.identifier)
-            status = "\(item.title)을 투명 PNG로 복사했습니다."
+            status = String(localized: "\(item.title)을 투명 PNG로 복사했습니다.")
         } catch { self.error = error.localizedDescription }
     }
 

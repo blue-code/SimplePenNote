@@ -105,12 +105,12 @@ private struct PaperPreview: View {
 extension PaperStyle {
     var purpose: String {
         switch self {
-        case .blank: return "자유로운 스케치와 아이디어"
-        case .grid: return "수식, 도형, 반듯한 필기"
-        case .lines: return "일기와 긴 글 기록"
-        case .cornell: return "핵심 단서와 요약 정리"
-        case .weekly: return "한 주의 일정과 할 일"
-        case .study: return "문제와 풀이를 나란히"
+        case .blank: return String(localized: "자유로운 스케치와 아이디어")
+        case .grid: return String(localized: "수식, 도형, 반듯한 필기")
+        case .lines: return String(localized: "일기와 긴 글 기록")
+        case .cornell: return String(localized: "핵심 단서와 요약 정리")
+        case .weekly: return String(localized: "한 주의 일정과 할 일")
+        case .study: return String(localized: "문제와 풀이를 나란히")
         }
     }
 }
@@ -151,7 +151,7 @@ struct ExportOptionsView: View {
         NavigationStack {
             List {
                 Section {
-                    Label(page.title.isEmpty ? "제목 없는 노트" : page.title, systemImage: page.paperStyle.icon)
+                    Label(page.title.isEmpty ? String(localized: "제목 없는 노트") : page.title, systemImage: page.paperStyle.icon)
                     Text(proStore.isPro ? "워터마크 없이 저장하고 공유합니다." : "무료 내보내기에는 SimplePenNote 워터마크가 표시됩니다.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -250,7 +250,7 @@ struct ExportOptionsView: View {
             .alert("손글씨 보관함에 저장", isPresented: $showSaveSnippet) {
                 TextField("손글씨 이름", text: $snippetTitle)
                 Button("저장") {
-                    do { try onSaveSnippet(snippetTitle, options); snippetStatus = "보관함에 저장했습니다. 노트 목록에서 손글씨 보관함을 열어 다시 사용할 수 있습니다." }
+                    do { try onSaveSnippet(snippetTitle, options); snippetStatus = String(localized: "보관함에 저장했습니다. 노트 목록에서 손글씨 보관함을 열어 다시 사용할 수 있습니다.") }
                     catch { snippetStatus = error.localizedDescription }
                 }
                 Button("취소", role: .cancel) {}
@@ -290,7 +290,7 @@ struct ExportOptionsView: View {
             }
             UIPasteboard.general.setData(data, forPasteboardType: UTType.png.identifier)
             options = transparent
-            copyStatus = "투명 PNG를 복사했습니다. 다른 앱에 붙여넣으세요."
+            copyStatus = String(localized: "투명 PNG를 복사했습니다. 다른 앱에 붙여넣으세요.")
         } catch { copyStatus = error.localizedDescription }
     }
 }
@@ -335,7 +335,7 @@ struct BatchExportView: View {
                             HStack {
                                 Image(systemName: selectedIDs.contains(page.id) ? "checkmark.circle.fill" : "circle")
                                     .foregroundStyle(selectedIDs.contains(page.id) ? .indigo : .secondary)
-                                Text(page.title.isEmpty ? "제목 없는 노트" : page.title).foregroundStyle(.primary)
+                                Text(page.title.isEmpty ? String(localized: "제목 없는 노트") : page.title).foregroundStyle(.primary)
                                 Spacer()
                                 Image(systemName: page.paperStyle.icon).foregroundStyle(.secondary)
                             }.contentShape(Rectangle())

@@ -1,0 +1,96 @@
+{
+  "sourceLanguage": "ko",
+  "strings": {
+    "CFBundleDisplayName": {
+      "comment": "Bundle display name",
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SimplePenNote"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SimplePenNote"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "new",
+            "value": "SimplePenNote"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SimplePenNote"
+          }
+        }
+      }
+    },
+    "CFBundleName": {
+      "comment": "Bundle name",
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SimplePenNote"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SimplePenNote"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "new",
+            "value": "SimplePenNote"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SimplePenNote"
+          }
+        }
+      }
+    },
+    "NSFaceIDUsageDescription": {
+      "comment": "Privacy - Face ID Usage Description",
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When app lock is on, Face ID unlocks the app. SimplePenNote only uses the result of authentication and never accesses your biometric data."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アプリロックをオンにすると、Face IDでロックを解除します。SimplePenNoteは認証結果のみを使用し、生体情報そのものにはアクセスしません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "new",
+            "value": "앱 잠금을 활성화하면 Face ID로 잠금을 해제합니다. SimplePenNote는 인증 결과만 사용하며, 생체 정보 자체에 접근하지 않습니다."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启应用锁后，将使用面容 ID 解锁。SimplePenNote 只使用验证结果，不会访问你的生物识别信息。"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}
